@@ -1028,6 +1028,7 @@
                 }
                 app.buildDynamicUI();
                 app.setupModalBackdropClicks();
+                app.setupKeyboardShortcuts();
                 app.renderAll();
 
                 if (app.isGithubConfigured()) {
@@ -1191,6 +1192,41 @@
                     }
                     app.saveGift();
                 }
+            },
+            setupKeyboardShortcuts: () => {
+                document.addEventListener('keydown', (e) => {
+                    const openModalId = ['giftModal', 'budgetsModal', 'configModal', 'shareModal', 'unlockModal'].find(
+                        id => document.getElementById(id).style.display === 'block'
+                    );
+                    if (!openModalId) return;
+
+                    // ESC: Tanca la finestra sense guardar (com Cancel·lar)
+                    if (e.key === 'Escape') {
+                        e.preventDefault();
+                        app.closeModal(openModalId);
+                        return;
+                    }
+
+                    // Ctrl + Enter (o Cmd + Enter a Mac): Guarda i tanca
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                        e.preventDefault();
+                        if (openModalId === 'giftModal') {
+                            app.saveGift();
+                        } else if (openModalId === 'budgetsModal') {
+                            if (app.activeBudgetTab === 'limits') app.saveBudgets(true);
+                            else if (app.activeBudgetTab === 'lastYear') app.saveLastYear(true);
+                            else app.closeModal('budgetsModal');
+                        } else if (openModalId === 'configModal') {
+                            if (app.activeConfigTab === 'github') app.saveGithubConfig();
+                            else app.saveFamilyConfig();
+                        } else if (openModalId === 'unlockModal') {
+                            app.unlock();
+                        } else if (openModalId === 'shareModal') {
+                            app.copyShareText();
+                            app.closeModal('shareModal');
+                        }
+                    }
+                });
             },
 
             // --- EXPORTAR I IMPORTAR ARXIU JSON ---
