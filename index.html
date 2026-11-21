@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Nadal Tracker">
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎄</text></svg>">
-    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect width='180' height='180' rx='36' fill='%23b3000c'/><text x='90' y='128' font-size='105' text-anchor='middle'>🎄</text></svg>">
+    <link id="appleTouchIcon" rel="apple-touch-icon" href="">
     <title>Nadal Tracker 🎄</title>
     <style>
         /* --- BLOC VISTA (CSS) --- */
@@ -1042,6 +1042,7 @@
                 app.setupModalBackdropClicks();
                 app.setupKeyboardShortcuts();
                 app.renderCountdown();
+                app.generatePngIcons();
                 app.renderAll();
 
                 if (app.isGithubConfigured()) {
@@ -1261,6 +1262,26 @@
                 else if (dTio > 0) el.innerText = `⏳ ${dTio} dies per al Tió · ${dNadal} per Nadal · ${dReis} per Reis`;
                 else if (dReis > 0) el.innerText = `⏳ Queden ${dReis} dies per a l'arribada dels Reis 👑`;
                 else el.innerText = "✨ Planificació Nadalenca Activa";
+            },
+
+            generatePngIcons: () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 180;
+                canvas.height = 180;
+                const ctx = canvas.getContext('2d');
+
+                // Omplim tot el quadrat de vermell (iOS arrodoneix les cantonades sol)
+                ctx.fillStyle = '#b3000c';
+                ctx.fillRect(0, 0, 180, 180);
+
+                // Dibuixem l'arbre de Nadal al centre
+                ctx.font = '105px -apple-system, BlinkMacSystemFont, "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('🎄', 90, 98);
+
+                const appleIcon = document.getElementById('appleTouchIcon');
+                if (appleIcon) appleIcon.href = canvas.toDataURL('image/png');
             },
 
             // --- EXPORTAR I IMPORTAR ARXIU JSON ---
