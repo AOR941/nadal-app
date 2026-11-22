@@ -128,7 +128,7 @@
                 <div id="personBoardContainer"></div>
             </div>
 
-            <!-- VISTA 3: CALENDARI D'ADVENT (24 DIES) -->
+            <!-- VISTA 3: CALENDARI D'ADVENT (24 DIES + BATERIA D'IDEES) -->
             <div id="adventViewSection" class="hidden">
                 <div id="adventSummaryCard" class="advent-summary-card"></div>
 
@@ -140,6 +140,7 @@
                 </div>
 
                 <div id="adventGridContainer"></div>
+                <div id="adventPoolSection" class="advent-pool-section"></div>
             </div>
 
             <!-- VISTA 4: DINAR DE SANTA LLÚCIA -->
@@ -419,15 +420,28 @@
         </div>
     </div>
 
-    <!-- MODAL: DIA DEL CALENDARI D'ADVENT -->
+    <!-- MODAL: DIA DEL CALENDARI D'ADVENT / BATERIA D'IDEES -->
     <div id="adventModal" class="modal">
         <div class="modal-content">
             <h2 id="advModalTitle" style="margin-bottom: 4px;">🕯️ Dia 1 de Desembre</h2>
             <div id="advModalSubtitle" class="adv-modal-sub"></div>
             <input type="hidden" id="advDayInput">
+            <input type="hidden" id="advPoolIdInput">
 
-            <label class="cfg-label">Què toca aquest dia? (Regalet o activitat):</label>
+            <!-- Selector ràpid des de la Bateria d'Idees (visible quan s'obre un dia del calendari) -->
+            <div id="advPickFromPoolBox" class="adv-pick-pool-box hidden">
+                <label class="cfg-label" style="margin-top:0; color:var(--c-green-dark);">🧺 Assignar des de la Bateria d'Idees:</label>
+                <div class="adv-pick-pool-row">
+                    <select id="advPickFromPoolSelect"></select>
+                    <button type="button" onclick="app.assignSelectedPoolToCurrentDay()">Assignar</button>
+                </div>
+            </div>
+
+            <label class="cfg-label">Què toca? (Regalet o activitat):</label>
             <input type="text" id="advTitle" placeholder="Ex: Llibre de Nadal, Taller de galetes, Adhesius...">
+
+            <label class="cfg-label">Data assignada:</label>
+            <select id="advTargetDaySelect"></select>
 
             <label class="cfg-label">Estat:</label>
             <select id="advState">
@@ -452,10 +466,13 @@
             <textarea id="advComments" rows="2" placeholder="Ex: Guardat a l'armari de dalt, imprimir val..."></textarea>
 
             <div style="display:flex; gap:10px; margin-top: 20px;">
-                <button onclick="app.saveAdventDay()">Guardar</button>
+                <button onclick="app.saveAdventModal()">Guardar</button>
                 <button class="danger" onclick="app.closeModal('adventModal')">Cancel·lar</button>
             </div>
-            <button type="button" id="btnClearAdvent" class="danger hidden" onclick="app.clearAdventDay()" style="background:#999; margin-top:10px;">🗑️ Buidar aquest dia</button>
+            <div style="display:flex; gap:10px; margin-top: 10px;">
+                <button type="button" id="btnMoveAdventToPool" class="secondary hidden" onclick="app.moveCurrentDayToPool()">📥 Tornar a la bateria</button>
+                <button type="button" id="btnClearAdvent" class="danger hidden" onclick="app.deleteOrClearAdvent()" style="background:#999;">🗑️ Buidar / Eliminar</button>
+            </div>
         </div>
     </div>
 
