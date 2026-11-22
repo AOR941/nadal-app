@@ -1,4 +1,4 @@
-        const DEFAULT_FAMILY_CONFIG = {
+const DEFAULT_FAMILY_CONFIG = {
             parents: ["Mare", "Pare"],
             casaMembers: ["Fill/a 1", "Fill/a 2", "Mare", "Pare"],
             dir1Name: "Família 1",
@@ -19,6 +19,7 @@
             ghSha: null,
             ghEtag: null,
             isSyncing: false,
+            queuedPush: false,
             pollTimer: null,
 
             currentUser: null, 
@@ -80,21 +81,39 @@
                 return new TextDecoder().decode(bytes);
             },
 
-            // Motor criptogràfic Top Secret (compatible amb versions anteriors)
+            // Motor criptogràfic Top Secret (UTF-8 amb compatibilitat retroactiva Latin-1)
             crypt: (text, key) => {
                 if (!text) return '';
-                let res = '';
-                for (let i = 0; i < text.length; i++) res += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
-                return btoa(res);
+                const encoder = new TextEncoder();
+                const textBytes = encoder.encode(text);
+                const keyBytes = encoder.encode(key);
+                let bin = '';
+                for (let i = 0; i < textBytes.length; i++) {
+                    bin += String.fromCharCode(textBytes[i] ^ keyBytes[i % keyBytes.length]);
+                }
+                return btoa(bin);
             },
             decrypt: (base64, key) => {
                 if (!base64) return '';
                 try {
-                    let text = atob(base64);
-                    let res = '';
-                    for (let i = 0; i < text.length; i++) res += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
-                    return res;
-                } catch(e) { return ''; }
+                    const raw = atob(base64);
+                    const cipherBytes = new Uint8Array(raw.length);
+                    for (let i = 0; i < raw.length; i++) cipherBytes[i] = raw.charCodeAt(i);
+                    const keyBytes = new TextEncoder().encode(key);
+                    const plainBytes = new Uint8Array(cipherBytes.length);
+                    for (let i = 0; i < cipherBytes.length; i++) {
+                        plainBytes[i] = cipherBytes[i] ^ keyBytes[i % keyBytes.length];
+                    }
+                    try {
+                        return new TextDecoder('utf-8', { fatal: true }).decode(plainBytes);
+                    } catch (utf8Err) {
+                        let res = '';
+                        for (let i = 0; i < raw.length; i++) {
+                            res += String.fromCharCode(raw.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+                        }
+                        return res;
+                    }
+                } catch (e) { return ''; }
             },
 
             // Extreu automàticament els noms si s'importa un JSON d'una versió anterior sense config
@@ -295,6 +314,7 @@
                         if (parsed && parsed.owner && parsed.token) {
                             app.ghConfig = Object.assign({}, app.ghConfig, parsed);
                             app.persistGithubConfig();
+                            history.replaceState(null, '', window.location.pathname);
                             return;
                         }
                     } catch (e) {}
@@ -357,7 +377,7 @@
             },
 
             // Fusiona dades remotes i locals sense perdre res si hi ha conflicte de versió
-            mergeDataObjects: (remote, local) => {
+            mergeDataObjects: (remote, local, preferLocalBudgets = false) => {
                 const mergedDeleted = new Set([...(remote.deletedIds || []), ...(local.deletedIds || [])]);
                 const giftsMap = new Map();
 
@@ -375,8 +395,8 @@
                 return {
                     gifts: Array.from(giftsMap.values()),
                     deletedIds: Array.from(mergedDeleted),
-                    budgets: Object.assign({}, remote.budgets || {}, local.budgets || {}),
-                    lastYear: Object.assign({}, remote.lastYear || {}, local.lastYear || {}),
+                    budgets: preferLocalBudgets ? Object.assign({}, local.budgets || {}) : Object.assign({}, remote.budgets || {}, local.budgets || {}),
+                    lastYear: preferLocalBudgets ? Object.assign({}, local.lastYear || {}) : Object.assign({}, remote.lastYear || {}, local.lastYear || {}),
                     pins: Object.assign({}, remote.pins || {}, local.pins || {}),
                     config: local.config || remote.config || null,
                     lastUpdate: new Date().toLocaleString('ca-ES')
@@ -387,6 +407,16 @@
                 if (!app.isGithubConfigured() || app.isSyncing) return false;
                 app.isSyncing = true;
                 if (!silent) app.setCloudStatus('syncing', 'Sincronitzant amb GitHub...');
+
+                const finishPull = (ok) => {
+                    app.isSyncing = false;
+                    const hasPending = (localStorage.getItem('nadalPendingSync') === '1');
+                    if (app.queuedPush || (ok && hasPending)) {
+                        app.queuedPush = false;
+                        app.pushToGithub();
+                    }
+                    return ok;
+                };
 
                 try {
                     const headers = {
@@ -405,15 +435,13 @@
                     if (res.status === 304) {
                         const nowTime = new Date().toLocaleTimeString('ca-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                         app.setCloudStatus('ok', `Connectat (${nowTime})`);
-                        app.isSyncing = false;
-                        return true;
+                        return finishPull(true);
                     }
 
                     if (res.status === 404) {
                         app.ghSha = null;
                         app.setCloudStatus('ok', 'Núvol connectat (arxiu nou)');
-                        app.isSyncing = false;
-                        return true;
+                        return finishPull(true);
                     }
 
                     if (!res.ok) {
@@ -426,11 +454,16 @@
                     const payload = await res.json();
                     const remoteChanged = (payload.sha !== app.ghSha);
                     app.ghSha = payload.sha;
+                    const hasPendingSync = (localStorage.getItem('nadalPendingSync') === '1');
 
-                    if (remoteChanged && payload.content) {
+                    if (payload.content && (remoteChanged || hasPendingSync)) {
                         const decodedStr = app.ghDecodeBase64(payload.content);
                         const remoteData = JSON.parse(decodedStr);
-                        app.data = Object.assign({ gifts: [], deletedIds: [], budgets: {}, lastYear: {}, pins: {}, config: null }, remoteData);
+                        if (hasPendingSync) {
+                            app.data = app.mergeDataObjects(remoteData, app.data, true);
+                        } else {
+                            app.data = Object.assign({ gifts: [], deletedIds: [], budgets: {}, lastYear: {}, pins: {}, config: null }, remoteData);
+                        }
                         localStorage.setItem('nadalData', JSON.stringify(app.data));
                         document.getElementById('lastSync').innerText = app.data.lastUpdate || 'Ara';
                         app.buildDynamicUI();
@@ -439,18 +472,21 @@
 
                     const nowTime = new Date().toLocaleTimeString('ca-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                     app.setCloudStatus('ok', `Sincronitzat (${nowTime})`);
-                    app.isSyncing = false;
-                    return true;
+                    return finishPull(true);
                 } catch (err) {
                     app.setCloudStatus('error', `Error núvol (${err.message})`);
-                    app.isSyncing = false;
-                    return false;
+                    return finishPull(false);
                 }
             },
 
             pushToGithub: async (retryCount = 0) => {
                 if (!app.isGithubConfigured()) return;
+                if (app.isSyncing) {
+                    app.queuedPush = true;
+                    return;
+                }
                 app.isSyncing = true;
+                app.queuedPush = false;
                 app.setCloudStatus('syncing', 'Guardant al núvol...');
 
                 try {
@@ -486,7 +522,7 @@
                             const remotePayload = await getRes.json();
                             app.ghSha = remotePayload.sha;
                             const remoteData = JSON.parse(app.ghDecodeBase64(remotePayload.content));
-                            app.data = app.mergeDataObjects(remoteData, app.data);
+                            app.data = app.mergeDataObjects(remoteData, app.data, true);
                             localStorage.setItem('nadalData', JSON.stringify(app.data));
                             app.isSyncing = false;
                             return app.pushToGithub(retryCount + 1);
@@ -506,9 +542,20 @@
                     const nowTime = new Date().toLocaleTimeString('ca-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                     app.setCloudStatus('ok', `Guardat al núvol (${nowTime})`);
                     app.isSyncing = false;
+
+                    if (app.queuedPush) {
+                        app.queuedPush = false;
+                        app.pushToGithub();
+                    } else {
+                        try { localStorage.removeItem('nadalPendingSync'); } catch (e) {}
+                    }
                 } catch (err) {
                     app.setCloudStatus('error', `Error guardant (${err.message}) — Desat en local`);
                     app.isSyncing = false;
+                    if (app.queuedPush) {
+                        app.queuedPush = false;
+                        app.pushToGithub();
+                    }
                 }
             },
 
@@ -562,6 +609,7 @@
                 localStorage.setItem('nadalData', JSON.stringify(app.data));
                 document.getElementById('lastSync').innerText = app.data.lastUpdate;
                 if (app.isGithubConfigured()) {
+                    try { localStorage.setItem('nadalPendingSync', '1'); } catch (e) {}
                     app.pushToGithub();
                 }
             },
@@ -610,7 +658,8 @@
                 app.persistGithubConfig();
                 if (window.location.hash.startsWith('#setup=')) {
                     history.replaceState(null, '', window.location.pathname);
-                }                app.ghSha = null;
+                }
+                app.ghSha = null;
                 app.ghEtag = null;
                 app.closeModal('configModal');
 
@@ -713,6 +762,7 @@
                     app.saveGift();
                 }
             },
+
             setupKeyboardShortcuts: () => {
                 document.addEventListener('keydown', (e) => {
                     const openModalId = ['giftModal', 'budgetsModal', 'configModal', 'shareModal', 'unlockModal'].find(
@@ -1548,6 +1598,31 @@
                 document.getElementById('budgetPct').innerText = execPct + '%';
                 document.getElementById('headerProgressBar').style.width = Math.min(execPct, 100) + '%';
             },
+
+            matchesListFilters: (g, search, typeF, status, person, eventF) => {
+                const itemType = g.type || 'gift';
+                const d = app.resolveGiftDisplay(g);
+
+                if (typeF === 'gift' && itemType !== 'gift') return false;
+                if (typeF === 'expense' && itemType !== 'expense') return false;
+                if (typeF === 'gift_ours' && (itemType !== 'gift' || d.isOtherHouse)) return false;
+                if (typeF === 'gift_others' && (itemType !== 'gift' || !d.isOtherHouse)) return false;
+
+                const recipsText = d.recips.join(', ');
+                const fromsText = d.froms.join(', ');
+
+                if (status === 'Idea' && g.state !== 'Idea') return false;
+                if (status === 'Decidit' && g.state !== 'Decidit') return false;
+                if (status === 'Confirmat' && g.state !== 'Confirmat') return false;
+                if (status === 'Pendent' && (g.state === 'Idea' || g.state === 'El tenim' || g.state === 'Embolicat' || g.state === 'Confirmat')) return false;
+                if (person !== 'all' && (d.isExpense || !d.recips.includes(person))) return false;
+                if (eventF !== 'all' && g.event !== eventF) return false;
+
+                const searchableText = `${d.titleDisplay} ${recipsText} ${fromsText} ${d.commentsDisplay} ${g.expenseCat || ''} ${g.event || ''}`.toLowerCase();
+                if (search && !searchableText.includes(search)) return false;
+
+                return true;
+            },
             
             // --- VISTA 1: LLISTA I LOGÍSTICA ---
             renderList: () => {
@@ -1563,40 +1638,38 @@
                 const person = document.getElementById('personFilter').value;
 
                 if (eventF === cfg.bigTioName && cfg.rounds.length > 0) {
+                    const visibleEventGifts = app.data.gifts.filter(g => app.matchesListFilters(g, search, typeF, status, person, eventF));
+
                     cfg.rounds.forEach(roundName => {
-                        const roundGifts = app.data.gifts.filter(g => g.event === eventF && g.round === roundName);
-                        if(roundGifts.length > 0) {
-                            list.innerHTML += `<div class="round-header">🪵 ${roundName}</div>`;
+                        const roundGifts = visibleEventGifts.filter(g => g.round === roundName);
+                        if (roundGifts.length > 0) {
+                            const headerDiv = document.createElement('div');
+                            headerDiv.className = 'round-header';
+                            headerDiv.innerText = `🪵 ${roundName}`;
+                            list.appendChild(headerDiv);
                             roundGifts.forEach(g => app.renderCard(g, list, search, typeF, status, person, eventF));
                         }
                     });
+
+                    const ungroupedGifts = visibleEventGifts.filter(g => !g.round || !cfg.rounds.includes(g.round));
+                    if (ungroupedGifts.length > 0) {
+                        const headerDiv = document.createElement('div');
+                        headerDiv.className = 'round-header';
+                        headerDiv.innerText = '🪵 Altres / Sense ronda';
+                        list.appendChild(headerDiv);
+                        ungroupedGifts.forEach(g => app.renderCard(g, list, search, typeF, status, person, eventF));
+                    }
                 } else {
                     app.data.gifts.forEach(g => app.renderCard(g, list, search, typeF, status, person, eventF));
                 }
             },
 
             renderCard: (g, container, search, typeF, status, person, eventF) => {
-                const cfg = app.getConfig();
-                const itemType = g.type || 'gift';
+                if (!app.matchesListFilters(g, search, typeF, status, person, eventF)) return;
+
                 const d = app.resolveGiftDisplay(g);
-
-                if (typeF === 'gift' && itemType !== 'gift') return;
-                if (typeF === 'expense' && itemType !== 'expense') return;
-                if (typeF === 'gift_ours' && (itemType !== 'gift' || d.isOtherHouse)) return;
-                if (typeF === 'gift_others' && (itemType !== 'gift' || !d.isOtherHouse)) return;
-
                 const recipsText = d.recips.join(', ');
                 const fromsText = d.froms.join(', ');
-
-                if(status === 'Idea' && g.state !== 'Idea') return;
-                if(status === 'Decidit' && g.state !== 'Decidit') return;
-                if(status === 'Confirmat' && g.state !== 'Confirmat') return;
-                if(status === 'Pendent' && (g.state === 'Idea' || g.state === 'El tenim' || g.state === 'Embolicat' || g.state === 'Confirmat')) return;
-                if(person !== 'all' && (d.isExpense || !d.recips.includes(person))) return;
-                if(eventF !== 'all' && g.event !== eventF && eventF !== cfg.bigTioName) return; 
-                
-                const searchableText = `${d.titleDisplay} ${recipsText} ${fromsText} ${d.commentsDisplay} ${g.expenseCat || ''} ${g.event || ''}`.toLowerCase();
-                if(search && !searchableText.includes(search)) return;
 
                 const div = document.createElement('div');
                 let extClass = d.isExpense ? 'expense' : (d.isOthersSecret ? 'secret' : (d.isOtherHouse ? 'altres' : ''));
