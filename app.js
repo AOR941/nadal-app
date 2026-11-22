@@ -16,7 +16,7 @@ const DEFAULT_FAMILY_CONFIG = {
 const ALL_MODAL_IDS = ['giftModal', 'budgetsModal', 'configModal', 'shareModal', 'unlockModal', 'adventModal'];
 
 const app = {
-    data: { gifts: [], deletedIds: [], advent: {}, budgets: {}, lastYear: {}, pins: {}, config: null, lastUpdate: 'Mai' },
+    data: { gifts: [], deletedIds: [], advent: {}, adventPool: [], budgets: {}, lastYear: {}, pins: {}, config: null, lastUpdate: 'Mai' },
     ghConfig: { owner: '', repo: 'nadal-dades', path: 'dades.json', token: '' },
     ghSha: null,
     ghEtag: null,
@@ -235,7 +235,6 @@ const app = {
             "✨ General Festes"
         ];
 
-        // Neteja esdeveniments seleccionats que hagin pogut canviar de nom a la config
         app.selectedEvents = app.selectedEvents.filter(ev => events.includes(ev));
 
         const statusCont = document.getElementById('statusPillsContainer');
@@ -262,7 +261,6 @@ const app = {
             eventCont.appendChild(btn);
         });
 
-        // Indicadors d'activitat als filtres
         const typeVal = document.getElementById('typeFilter').value;
         const personVal = document.getElementById('personFilter').value;
         const activeCount = app.selectedStates.length + app.selectedEvents.length + (typeVal !== 'all' ? 1 : 0) + (personVal !== 'all' ? 1 : 0);
@@ -431,7 +429,6 @@ const app = {
             }
         }, { passive: true });
 
-        // Tanca el desplegable del núvol si es toca fora de la capçalera
         document.addEventListener('click', (e) => {
             const drawer = document.getElementById('cloudDrawer');
             if (!drawer.classList.contains('hidden') && !header.contains(e.target)) {
@@ -579,10 +576,24 @@ const app = {
             }
         }
 
+        // Fusió de la Bateria d'Idees d'Advent per id i updatedAt
+        const poolMap = new Map();
+        (remote.adventPool || []).forEach(item => {
+            if (item && item.id && !mergedDeleted.has(item.id)) poolMap.set(item.id, item);
+        });
+        (local.adventPool || []).forEach(item => {
+            if (!item || !item.id || mergedDeleted.has(item.id)) return;
+            const existing = poolMap.get(item.id);
+            if (!existing || (item.updatedAt || 0) >= (existing.updatedAt || 0)) {
+                poolMap.set(item.id, item);
+            }
+        });
+
         return {
             gifts: Array.from(giftsMap.values()),
             deletedIds: Array.from(mergedDeleted),
             advent: mergedAdvent,
+            adventPool: Array.from(poolMap.values()),
             budgets: preferLocalBudgets ? Object.assign({}, local.budgets || {}) : Object.assign({}, remote.budgets || {}, local.budgets || {}),
             lastYear: preferLocalBudgets ? Object.assign({}, local.lastYear || {}) : Object.assign({}, remote.lastYear || {}, local.lastYear || {}),
             pins: Object.assign({}, remote.pins || {}, local.pins || {}),
@@ -650,7 +661,7 @@ const app = {
                 if (hasPendingSync) {
                     app.data = app.mergeDataObjects(remoteData, app.data, true);
                 } else {
-                    app.data = Object.assign({ gifts: [], deletedIds: [], advent: {}, budgets: {}, lastYear: {}, pins: {}, config: null }, remoteData);
+                    app.data = Object.assign({ gifts: [], deletedIds: [], advent: {}, adventPool: [], budgets: {}, lastYear: {}, pins: {}, config: null }, remoteData);
                 }
                 localStorage.setItem('nadalData', JSON.stringify(app.data));
                 document.getElementById('lastSync').innerText = app.data.lastUpdate || 'Ara';
@@ -772,7 +783,7 @@ const app = {
         app.loadGithubConfig();
         const saved = localStorage.getItem('nadalData');
         if (saved) {
-            app.data = Object.assign({ gifts: [], deletedIds: [], advent: {}, budgets: {}, lastYear: {}, pins: {}, config: null }, JSON.parse(saved));
+            app.data = Object.assign({ gifts: [], deletedIds: [], advent: {}, adventPool: [], budgets: {}, lastYear: {}, pins: {}, config: null }, JSON.parse(saved));
             document.getElementById('lastSync').innerText = app.data.lastUpdate || 'Mai';
         }
         app.buildDynamicUI();
@@ -852,7 +863,8 @@ const app = {
 
         if (app.isGithubConfigured()) {
             const ok = await app.pullFromGithub(false);
-            if (ok && app.ghSha === null && (app.data.gifts.length > 0 || Object.keys(app.data.advent || {}).length > 0)) {
+            const hasLocalContent = app.data.gifts.length > 0 || Object.keys(app.data.advent || {}).length > 0 || (app.data.adventPool || []).length > 0;
+            if (ok && app.ghSha === null && hasLocalContent) {
                 await app.pushToGithub();
             }
             app.startPolling();
@@ -978,7 +990,7 @@ const app = {
                 app.closeModal('adventModal');
                 return;
             }
-            app.saveAdventDay();
+            app.saveAdventModal();
         }
     },
 
@@ -1000,7 +1012,7 @@ const app = {
                 if (openModalId === 'giftModal') {
                     app.saveGift();
                 } else if (openModalId === 'adventModal') {
-                    app.saveAdventDay();
+                    app.saveAdventModal();
                 } else if (openModalId === 'budgetsModal') {
                     if (app.activeBudgetTab === 'limits') app.saveBudgets(true);
                     else if (app.activeBudgetTab === 'lastYear') app.saveLastYear(true);
@@ -1077,6 +1089,7 @@ const app = {
                 if (!imported.pins) imported.pins = {};
                 if (!imported.deletedIds) imported.deletedIds = [];
                 if (!imported.advent) imported.advent = {};
+                if (!imported.adventPool) imported.adventPool = [];
 
                 const wasMissingConfig = !imported.config;
                 if (wasMissingConfig) {
@@ -1198,9 +1211,13 @@ const app = {
             }
         });
 
-        // 2. Despeses del Calendari d'Advent (dins "🗓️ Calendari d'Advent")
+        // 2. Despeses del Calendari d'Advent (24 dies + Bateria d'Idees)
         const adventCat = "🗓️ Calendari d'Advent";
-        Object.values(app.data.advent || {}).forEach(item => {
+        const allAdventItems = [
+            ...Object.values(app.data.advent || {}),
+            ...(app.data.adventPool || [])
+        ];
+        allAdventItems.forEach(item => {
             if (!item || !item.title || !item.title.trim()) return;
             const p = parseFloat(item.price) || 0;
             if (p <= 0) return;
@@ -1626,8 +1643,6 @@ const app = {
 
     openNewSantaLluciaExpense: () => {
         app.openModal(null);
-        app.setItemType('expense', 'Idea');
-        document.getElementById('gExpenseCat').value = '🍲 Dinar de Santa Llúcia';
     },
 
     openModal: (id = null) => {
@@ -1859,10 +1874,8 @@ const app = {
         if (typeF === 'gift_ours' && (itemType !== 'gift' || d.isOtherHouse)) return false;
         if (typeF === 'gift_others' && (itemType !== 'gift' || !d.isOtherHouse)) return false;
 
-        // Multi-selecció d'estats individuals
         if (app.selectedStates.length > 0 && !app.selectedStates.includes(g.state)) return false;
 
-        // Multi-selecció d'esdeveniments
         const evVal = g.event || '❓ Per decidir';
         if (app.selectedEvents.length > 0 && !app.selectedEvents.includes(evVal)) return false;
 
@@ -2170,7 +2183,7 @@ const app = {
         `;
     },
 
-    // --- VISTA 3: CALENDARI D'ADVENT (24 DIES) ---
+    // --- VISTA 3: CALENDARI D'ADVENT (24 DIES + BATERIA D'IDEES) ---
     setAdventFilter: (filterVal) => {
         app.activeAdventFilter = filterVal;
         const map = {
@@ -2185,6 +2198,21 @@ const app = {
         app.renderAdvent();
     },
 
+    buildAdventDaySelectOptions: (selectedDayStr = 'pool', currentDayStr = '') => {
+        const advData = app.data.advent || {};
+        let opts = `<option value="pool" ${selectedDayStr === 'pool' ? 'selected' : ''}>🧺 Sense data (Bateria d'idees)</option>`;
+        for (let d = 1; d <= 24; d++) {
+            const key = String(d);
+            const item = advData[key];
+            const hasTitle = Boolean(item && item.title && item.title.trim());
+            let suffix = '⬜ Buit';
+            if (key === currentDayStr) suffix = '📍 Dia actual';
+            else if (hasTitle) suffix = `⚠️ Ocupat: ${item.title.slice(0, 22)}${item.title.length > 22 ? '…' : ''}`;
+            opts += `<option value="${key}" ${selectedDayStr === key ? 'selected' : ''}>Dia ${d} des. (${suffix})</option>`;
+        }
+        return opts;
+    },
+
     renderAdvent: () => {
         const year = app.getChristmasYear();
         const kids = app.getKidsList();
@@ -2193,6 +2221,7 @@ const app = {
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const advData = app.data.advent || {};
+        const poolList = app.data.adventPool || [];
 
         let doneCount = 0;
         let plannedCount = 0;
@@ -2217,6 +2246,13 @@ const app = {
             }
         }
 
+        poolList.forEach(item => {
+            if (!item || !item.title || !item.title.trim()) return;
+            const p = parseFloat(item.price) || 0;
+            if (item.state === 'Comprat') spentTotal += p;
+            else pendingTotal += p;
+        });
+
         document.getElementById('adventSummaryCard').innerHTML = `
             <div class="advent-summary-top">
                 <div class="advent-summary-title">🕯️ Calendari d'Advent ${year}</div>
@@ -2226,6 +2262,7 @@ const app = {
                 <span class="advent-stat-chip" style="background:#d4efdf; color:#1e8449;">✅ A punt: ${doneCount}/24</span>
                 <span class="advent-stat-chip" style="background:#fdebd0; color:#b9770e;">💡 Idees/Decidits: ${plannedCount}</span>
                 <span class="advent-stat-chip">⬜ Buits: ${emptyCount}</span>
+                <span class="advent-stat-chip" style="background:#fef9e7; color:#9a7d0a;">🧺 Bateria: ${poolList.length}</span>
                 <span class="advent-stat-chip" style="background:#f4fbf7; color:var(--c-green-dark);">💰 Gastat: ${spentTotal.toFixed(2)} €${pendingTotal > 0 ? ` (Previst: +${pendingTotal.toFixed(2)} €)` : ''}</span>
             </div>
         `;
@@ -2247,7 +2284,6 @@ const app = {
             <div class="advent-grid">
         `;
 
-        // Cel·les buides abans de l'1 de desembre (només es veuen a PC en format calendari)
         if (app.activeAdventFilter === 'all') {
             for (let i = 0; i < startOffset; i++) {
                 html += `<div class="advent-offset-cell"></div>`;
@@ -2322,6 +2358,141 @@ const app = {
 
         html += `</div>`;
         document.getElementById('adventGridContainer').innerHTML = html;
+
+        app.renderAdventPool();
+    },
+
+    renderAdventPool: () => {
+        const container = document.getElementById('adventPoolSection');
+        if (!container) return;
+        const poolList = app.data.adventPool || [];
+
+        let dayOptionsHtml = `<option value="">📅 Assignar dia...</option>`;
+        for (let d = 1; d <= 24; d++) {
+            const existing = (app.data.advent || {})[String(d)];
+            const hasTitle = Boolean(existing && existing.title && existing.title.trim());
+            dayOptionsHtml += `<option value="${d}">${hasTitle ? `Dia ${d} (ocupat)` : `Dia ${d} des. (⬜ Buit)`}</option>`;
+        }
+
+        let cardsHtml = '';
+        if (poolList.length === 0) {
+            cardsHtml = `<div class="person-empty-msg">Encara no hi ha idees a la bateria. Afegeix-ne aquí dalt per anar-les assignant als dies buits!</div>`;
+        } else {
+            cardsHtml = `<div class="advent-pool-grid">`;
+            poolList.forEach(item => {
+                const st = item.state || 'Idea';
+                const stateCls = st === 'Comprat' ? 'adv-comprat' : (st === 'Decidit' ? 'adv-decidit' : '');
+                const badgeHtml = st === 'Comprat'
+                    ? `<span class="mini-badge comprat">✅ A punt</span>`
+                    : (st === 'Decidit' ? `<span class="mini-badge decidit">🎯 Decidit</span>` : `<span class="mini-badge idea">💡 Idea</span>`);
+                const p = parseFloat(item.price) || 0;
+                const priceHtml = p > 0 ? `<b style="font-size:0.82em;">${item.isApprox ? '~' : ''}${p}€</b>` : '';
+                const noteHtml = (item.comments && item.comments.trim())
+                    ? `<div class="advent-note-preview">📝 ${item.comments.trim()}</div>`
+                    : '';
+
+                cardsHtml += `
+                    <div class="advent-pool-card ${stateCls}" onclick="app.openAdventPoolModal('${item.id}')">
+                        <div>
+                            <div class="advent-pool-card-top">
+                                <div class="advent-title">${item.title}</div>
+                                ${priceHtml}
+                            </div>
+                            ${noteHtml}
+                        </div>
+                        <div>
+                            <div style="margin-bottom:6px;">${badgeHtml}</div>
+                            <div class="advent-pool-assign-row" onclick="event.stopPropagation()">
+                                <select class="advent-pool-assign-select" onchange="app.quickAssignPoolItem('${item.id}', this.value); this.value='';">
+                                    ${dayOptionsHtml}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            cardsHtml += `</div>`;
+        }
+
+        container.innerHTML = `
+            <div class="advent-pool-header">
+                <div class="advent-pool-title">🧺 Bateria d'Idees (Sense data assignada)</div>
+                <span class="badge">${poolList.length} ${poolList.length === 1 ? 'idea' : 'idees'}</span>
+            </div>
+            <div class="advent-quick-add">
+                <input type="text" id="advPoolQuickInput" placeholder="Nova idea per a l'Advent (ex: Llibre, Galetes...)" onkeydown="if(event.key==='Enter'){event.preventDefault(); app.quickAddAdventPool();}">
+                <button type="button" onclick="app.quickAddAdventPool()">+ Afegir</button>
+            </div>
+            ${cardsHtml}
+        `;
+    },
+
+    quickAddAdventPool: () => {
+        const input = document.getElementById('advPoolQuickInput');
+        if (!input) return;
+        const title = input.value.trim();
+        if (!title) return;
+
+        if (!app.data.adventPool) app.data.adventPool = [];
+        app.data.adventPool.push({
+            id: Date.now().toString(),
+            title,
+            state: 'Idea',
+            price: '',
+            isApprox: false,
+            url: '',
+            comments: '',
+            updatedAt: Date.now()
+        });
+
+        input.value = '';
+        app.saveLocal();
+        app.renderAll();
+    },
+
+    quickAssignPoolItem: (poolId, dayStr) => {
+        if (!dayStr) return;
+        const poolList = app.data.adventPool || [];
+        const poolItem = poolList.find(x => x.id === poolId);
+        if (!poolItem) return;
+
+        if (!app.data.advent) app.data.advent = {};
+        const existingDay = app.data.advent[dayStr];
+        const dayHasContent = Boolean(existingDay && existingDay.title && existingDay.title.trim());
+
+        if (dayHasContent) {
+            if (!confirm(`El dia ${dayStr} ja té "${existingDay.title}". Vols moure'l a la bateria d'idees i posar-hi "${poolItem.title}"?`)) {
+                return;
+            }
+            app.data.adventPool.push({
+                id: Date.now().toString() + '_ret',
+                title: existingDay.title,
+                state: existingDay.state || 'Idea',
+                price: existingDay.price || '',
+                isApprox: Boolean(existingDay.isApprox),
+                url: existingDay.url || '',
+                comments: existingDay.comments || '',
+                updatedAt: Date.now()
+            });
+        }
+
+        app.data.advent[dayStr] = {
+            day: Number(dayStr),
+            title: poolItem.title,
+            state: poolItem.state || 'Idea',
+            price: poolItem.price || '',
+            isApprox: Boolean(poolItem.isApprox),
+            url: poolItem.url || '',
+            comments: poolItem.comments || '',
+            updatedAt: Date.now()
+        };
+
+        app.data.adventPool = app.data.adventPool.filter(x => x.id !== poolId);
+        if (!app.data.deletedIds) app.data.deletedIds = [];
+        if (!app.data.deletedIds.includes(poolId)) app.data.deletedIds.push(poolId);
+
+        app.saveLocal();
+        app.renderAll();
     },
 
     openAdventModal: (day) => {
@@ -2332,13 +2503,31 @@ const app = {
         const cellDate = new Date(year, 11, day);
         const weekdayFull = ['Diumenge', 'Dilluns', 'Dimarts', 'Dimecres', 'Dijous', 'Divendres', 'Dissabte'][cellDate.getDay()];
 
-        document.getElementById('advDayInput').value = day;
+        document.getElementById('advDayInput').value = String(day);
+        document.getElementById('advPoolIdInput').value = '';
         document.getElementById('advModalTitle').innerText = `🕯️ Dia ${day} de Desembre`;
         document.getElementById('advModalSubtitle').innerText = `${weekdayFull}, ${day} des. ${year} · 👧👧 ${kidsLabel}`;
+
+        const poolList = app.data.adventPool || [];
+        const pickBox = document.getElementById('advPickFromPoolBox');
+        const pickSel = document.getElementById('advPickFromPoolSelect');
+        if (poolList.length > 0) {
+            pickSel.innerHTML = '';
+            poolList.forEach(item => {
+                const icon = item.state === 'Comprat' ? '✅' : (item.state === 'Decidit' ? '🎯' : '💡');
+                const p = parseFloat(item.price) || 0;
+                const priceTag = p > 0 ? ` (${item.isApprox ? '~' : ''}${p}€)` : '';
+                pickSel.innerHTML += `<option value="${item.id}">${icon} ${item.title}${priceTag}</option>`;
+            });
+            pickBox.classList.remove('hidden');
+        } else {
+            pickBox.classList.add('hidden');
+        }
 
         const existing = (app.data.advent || {})[String(day)];
         const hasContent = Boolean(existing && existing.title && existing.title.trim());
 
+        document.getElementById('advTargetDaySelect').innerHTML = app.buildAdventDaySelectOptions(String(day), String(day));
         document.getElementById('advTitle').value = hasContent ? existing.title : '';
         document.getElementById('advState').value = hasContent ? (existing.state || 'Idea') : 'Idea';
         document.getElementById('advPrice').value = hasContent ? (existing.price || '') : '';
@@ -2346,21 +2535,97 @@ const app = {
         document.getElementById('advUrl').value = hasContent ? (existing.url || '') : '';
         document.getElementById('advComments').value = hasContent ? (existing.comments || '') : '';
 
+        document.getElementById('btnMoveAdventToPool').classList.toggle('hidden', !hasContent);
+        document.getElementById('btnClearAdvent').innerText = '🗑️ Buidar aquest dia';
         document.getElementById('btnClearAdvent').classList.toggle('hidden', !hasContent);
         document.getElementById('adventModal').style.display = 'block';
     },
 
-    saveAdventDay: () => {
-        const day = document.getElementById('advDayInput').value;
+    openAdventPoolModal: (poolId) => {
+        const poolItem = (app.data.adventPool || []).find(x => x.id === poolId);
+        if (!poolItem) return;
+
+        const kids = app.getKidsList();
+        const kidsLabel = kids.length > 0 ? kids.join(' i ') : 'Nenes de casa';
+
+        document.getElementById('advDayInput').value = '';
+        document.getElementById('advPoolIdInput').value = poolId;
+        document.getElementById('advModalTitle').innerText = `🧺 Idea per a l'Advent`;
+        document.getElementById('advModalSubtitle').innerText = `Sense data assignada · 👧👧 ${kidsLabel}`;
+
+        document.getElementById('advPickFromPoolBox').classList.add('hidden');
+        document.getElementById('advTargetDaySelect').innerHTML = app.buildAdventDaySelectOptions('pool', '');
+
+        document.getElementById('advTitle').value = poolItem.title || '';
+        document.getElementById('advState').value = poolItem.state || 'Idea';
+        document.getElementById('advPrice').value = poolItem.price || '';
+        document.getElementById('advPriceType').value = poolItem.isApprox ? 'approx' : 'definitive';
+        document.getElementById('advUrl').value = poolItem.url || '';
+        document.getElementById('advComments').value = poolItem.comments || '';
+
+        document.getElementById('btnMoveAdventToPool').classList.add('hidden');
+        document.getElementById('btnClearAdvent').innerText = '🗑️ Eliminar idea';
+        document.getElementById('btnClearAdvent').classList.remove('hidden');
+        document.getElementById('adventModal').style.display = 'block';
+    },
+
+    assignSelectedPoolToCurrentDay: () => {
+        const dayStr = document.getElementById('advDayInput').value;
+        const poolId = document.getElementById('advPickFromPoolSelect').value;
+        if (!dayStr || !poolId) return;
+        app.closeModal('adventModal');
+        app.quickAssignPoolItem(poolId, dayStr);
+    },
+
+    moveCurrentDayToPool: () => {
+        const dayStr = document.getElementById('advDayInput').value;
+        if (!dayStr) return;
+
         const title = document.getElementById('advTitle').value.trim();
-        if (!title) {
-            alert("Escriu què toca aquest dia (o prem 'Buidar aquest dia' si el vols deixar en blanc).");
-            return;
+        if (!app.data.adventPool) app.data.adventPool = [];
+
+        if (title) {
+            app.data.adventPool.push({
+                id: Date.now().toString(),
+                title,
+                state: document.getElementById('advState').value,
+                price: document.getElementById('advPrice').value,
+                isApprox: document.getElementById('advPriceType').value === 'approx',
+                url: document.getElementById('advUrl').value.trim(),
+                comments: document.getElementById('advComments').value.trim(),
+                updatedAt: Date.now()
+            });
         }
 
         if (!app.data.advent) app.data.advent = {};
-        app.data.advent[String(day)] = {
-            day: Number(day),
+        app.data.advent[dayStr] = {
+            day: Number(dayStr),
+            title: '',
+            state: 'Idea',
+            price: '',
+            isApprox: false,
+            url: '',
+            comments: '',
+            updatedAt: Date.now()
+        };
+
+        app.saveLocal();
+        app.closeModal('adventModal');
+        app.renderAll();
+    },
+
+    saveAdventModal: () => {
+        const sourceDay = document.getElementById('advDayInput').value;
+        const sourcePoolId = document.getElementById('advPoolIdInput').value;
+        const targetDay = document.getElementById('advTargetDaySelect').value;
+        const title = document.getElementById('advTitle').value.trim();
+
+        if (!title) {
+            alert("Escriu què toca (o prem el botó d'eliminar/buidar).");
+            return;
+        }
+
+        const itemData = {
             title,
             state: document.getElementById('advState').value,
             price: document.getElementById('advPrice').value,
@@ -2370,24 +2635,85 @@ const app = {
             updatedAt: Date.now()
         };
 
+        if (!app.data.advent) app.data.advent = {};
+        if (!app.data.adventPool) app.data.adventPool = [];
+        if (!app.data.deletedIds) app.data.deletedIds = [];
+
+        if (targetDay !== 'pool' && targetDay !== sourceDay) {
+            const destExisting = app.data.advent[targetDay];
+            if (destExisting && destExisting.title && destExisting.title.trim()) {
+                if (!confirm(`El dia ${targetDay} ja té "${destExisting.title}". Vols moure'l a la bateria d'idees i substituir-lo?`)) {
+                    return;
+                }
+                app.data.adventPool.push({
+                    id: Date.now().toString() + '_swap',
+                    title: destExisting.title,
+                    state: destExisting.state || 'Idea',
+                    price: destExisting.price || '',
+                    isApprox: Boolean(destExisting.isApprox),
+                    url: destExisting.url || '',
+                    comments: destExisting.comments || '',
+                    updatedAt: Date.now()
+                });
+            }
+        }
+
+        if (targetDay === 'pool') {
+            if (sourcePoolId) {
+                const idx = app.data.adventPool.findIndex(x => x.id === sourcePoolId);
+                if (idx > -1) app.data.adventPool[idx] = Object.assign({ id: sourcePoolId }, itemData);
+                else app.data.adventPool.push(Object.assign({ id: sourcePoolId }, itemData));
+            } else {
+                app.data.adventPool.push(Object.assign({ id: Date.now().toString() }, itemData));
+            }
+        } else {
+            app.data.advent[targetDay] = Object.assign({ day: Number(targetDay) }, itemData);
+        }
+
+        if (sourceDay && targetDay !== sourceDay) {
+            app.data.advent[sourceDay] = {
+                day: Number(sourceDay),
+                title: '',
+                state: 'Idea',
+                price: '',
+                isApprox: false,
+                url: '',
+                comments: '',
+                updatedAt: Date.now()
+            };
+        }
+        if (sourcePoolId && targetDay !== 'pool') {
+            app.data.adventPool = app.data.adventPool.filter(x => x.id !== sourcePoolId);
+            if (!app.data.deletedIds.includes(sourcePoolId)) app.data.deletedIds.push(sourcePoolId);
+        }
+
         app.saveLocal();
         app.closeModal('adventModal');
         app.renderAll();
     },
 
-    clearAdventDay: () => {
-        const day = document.getElementById('advDayInput').value;
-        if (!app.data.advent) app.data.advent = {};
-        app.data.advent[String(day)] = {
-            day: Number(day),
-            title: '',
-            state: 'Idea',
-            price: '',
-            isApprox: false,
-            url: '',
-            comments: '',
-            updatedAt: Date.now()
-        };
+    deleteOrClearAdvent: () => {
+        const sourceDay = document.getElementById('advDayInput').value;
+        const sourcePoolId = document.getElementById('advPoolIdInput').value;
+
+        if (sourcePoolId) {
+            if (!confirm("Segur que vols eliminar aquesta idea de la bateria?")) return;
+            app.data.adventPool = (app.data.adventPool || []).filter(x => x.id !== sourcePoolId);
+            if (!app.data.deletedIds) app.data.deletedIds = [];
+            if (!app.data.deletedIds.includes(sourcePoolId)) app.data.deletedIds.push(sourcePoolId);
+        } else if (sourceDay) {
+            if (!app.data.advent) app.data.advent = {};
+            app.data.advent[sourceDay] = {
+                day: Number(sourceDay),
+                title: '',
+                state: 'Idea',
+                price: '',
+                isApprox: false,
+                url: '',
+                comments: '',
+                updatedAt: Date.now()
+            };
+        }
 
         app.saveLocal();
         app.closeModal('adventModal');
