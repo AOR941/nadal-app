@@ -909,6 +909,13 @@
                 }
             },
 
+            getGithubApiUrl: () => {
+                const owner = encodeURIComponent(app.ghConfig.owner.trim());
+                const repo = encodeURIComponent(app.ghConfig.repo.trim());
+                const path = app.ghConfig.path.trim().split('/').map(encodeURIComponent).join('/');
+                return `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+            },
+
             // Fusiona dades remotes i locals sense perdre res si hi ha conflicte de versió
             mergeDataObjects: (remote, local) => {
                 const mergedDeleted = new Set([...(remote.deletedIds || []), ...(local.deletedIds || [])]);
