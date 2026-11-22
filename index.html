@@ -344,6 +344,7 @@
                     <button onclick="app.saveGithubConfig()">Guardar i Connectar ☁️</button>
                     <button class="danger" onclick="app.closeModal('configModal')">Tancar</button>
                 </div>
+                <button type="button" id="btnMagicLink" class="secondary" onclick="app.copyMagicLink()" style="margin-top: 10px;">🔗 Copiar Enllaç Màgic (per al mòbil)</button>
             </div>
 
             <!-- Pestanya 2: Configuració Familiar (es desa dins dades.json al núvol) -->
@@ -836,20 +837,76 @@
                 el.innerText = `${icons[state] || '⚪'} ${text}`;
             },
 
+            persistGithubConfig: () => {
+                const jsonStr = JSON.stringify(app.ghConfig);
+                try {
+                    localStorage.setItem('nadalGithubConfig', jsonStr);
+                } catch (e) {}
+                const encoded = encodeURIComponent(app.ghEncodeBase64(jsonStr));
+                document.cookie = `nadalGhCfg=${encoded}; max-age=31536000; path=/; SameSite=Lax`;
+            },
+
             loadGithubConfig: () => {
+                const hash = window.location.hash || '';
+                if (hash.startsWith('#setup=')) {
+                    try {
+                        const b64 = decodeURIComponent(hash.slice(7));
+                        const parsed = JSON.parse(app.ghDecodeBase64(b64));
+                        if (parsed && parsed.owner && parsed.token) {
+                            app.ghConfig = Object.assign({}, app.ghConfig, parsed);
+                            app.persistGithubConfig();
+                            return;
+                        }
+                    } catch (e) {}
+                }
+
                 const raw = localStorage.getItem('nadalGithubConfig');
                 if (raw) {
                     try {
                         app.ghConfig = Object.assign({}, app.ghConfig, JSON.parse(raw));
+                        return;
+                    } catch (e) {}
+                }
+
+                const cookieMatch = document.cookie.match(/(?:^|;\s*)nadalGhCfg=([^;]+)/);
+                if (cookieMatch) {
+                    try {
+                        const parsed = JSON.parse(app.ghDecodeBase64(decodeURIComponent(cookieMatch[1])));
+                        if (parsed && parsed.owner && parsed.token) {
+                            app.ghConfig = Object.assign({}, app.ghConfig, parsed);
+                            try { localStorage.setItem('nadalGithubConfig', JSON.stringify(app.ghConfig)); } catch (e) {}
+                        }
                     } catch (e) {}
                 }
             },
 
-            getGithubApiUrl: () => {
-                const owner = encodeURIComponent(app.ghConfig.owner.trim());
-                const repo = encodeURIComponent(app.ghConfig.repo.trim());
-                const path = app.ghConfig.path.trim().split('/').map(encodeURIComponent).join('/');
-                return `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+            copyMagicLink: () => {
+                const cfg = {
+                    owner: document.getElementById('ghOwner').value.trim() || app.ghConfig.owner,
+                    repo: document.getElementById('ghRepo').value.trim() || app.ghConfig.repo || 'nadal-dades',
+                    path: document.getElementById('ghPath').value.trim() || app.ghConfig.path || 'dades.json',
+                    token: document.getElementById('ghToken').value.trim() || app.ghConfig.token
+                };
+                if (!cfg.owner || !cfg.token) {
+                    return alert("Primer escriu l'usuari i el Token de GitHub!");
+                }
+                const baseUrl = window.location.origin + window.location.pathname;
+                const payload = encodeURIComponent(app.ghEncodeBase64(JSON.stringify(cfg)));
+                const magicUrl = `${baseUrl}#setup=${payload}`;
+
+                const btn = document.getElementById('btnMagicLink');
+                const markDone = () => {
+                    btn.innerText = '✅ Enllaç Màgic copiat!';
+                    setTimeout(() => { btn.innerText = '🔗 Copiar Enllaç Màgic (per al mòbil)'; }, 2500);
+                };
+
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(magicUrl).then(markDone).catch(() => {
+                        prompt("Copia aquest enllaç màgic:", magicUrl);
+                    });
+                } else {
+                    prompt("Copia aquest enllaç màgic:", magicUrl);
+                }
             },
 
             // Fusiona dades remotes i locals sense perdre res si hi ha conflicte de versió
@@ -1103,8 +1160,10 @@
                     path: document.getElementById('ghPath').value.trim() || 'dades.json',
                     token: document.getElementById('ghToken').value.trim()
                 };
-                localStorage.setItem('nadalGithubConfig', JSON.stringify(app.ghConfig));
-                app.ghSha = null;
+                app.persistGithubConfig();
+                if (window.location.hash.startsWith('#setup=')) {
+                    history.replaceState(null, '', window.location.pathname);
+                }                app.ghSha = null;
                 app.ghEtag = null;
                 app.closeModal('configModal');
 
