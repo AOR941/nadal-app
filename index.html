@@ -14,15 +14,38 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- --- BLOC ESTRUCTURA (HTML) --- -->
     <div id="mainApp">
-        <header>
+        <header id="appHeader">
             <div class="header-inner">
                 <div class="top-bar">
                     <span id="userStatus">👨‍👩‍👧‍👧 Vista Familiar</span>
-                    <span id="btnUnlock" onclick="app.openUnlockModal()" style="cursor:pointer; background: white; color: var(--c-red); padding: 2px 10px; border-radius: 12px;">🔒 Desbloquejar</span>
-                    <span id="btnLock" onclick="app.lock()" class="hidden" style="cursor:pointer; background: white; color: var(--c-green); padding: 2px 10px; border-radius: 12px;">🔓 Bloquejar</span>
+                    <div class="top-bar-actions">
+                        <button type="button" id="cloudToggleBtn" class="header-pill-btn" onclick="app.toggleCloudDrawer()" title="Estat del núvol i opcions">
+                            <span id="cloudStatusDot">⚪</span>
+                            <span id="cloudStatusShort">Local</span>
+                            <span class="caret">▾</span>
+                        </button>
+                        <span id="btnUnlock" onclick="app.openUnlockModal()" class="header-auth-btn unlock">🔒 Desbloquejar</span>
+                        <span id="btnLock" onclick="app.lock()" class="header-auth-btn lock hidden">🔓 Bloquejar</span>
+                    </div>
                 </div>
+
+                <!-- Panell desplegable compacte de Núvol i Eines -->
+                <div id="cloudDrawer" class="cloud-drawer hidden">
+                    <div class="cloud-drawer-status">
+                        <span id="cloudStatusBadge">⚪ Mode Local (Núvol no configurat)</span>
+                        <span class="cloud-last-sync">Últim canvi: <b id="lastSync">Mai</b></span>
+                    </div>
+                    <div class="cloud-drawer-buttons">
+                        <button type="button" onclick="app.manualSync(); app.toggleCloudDrawer(false);" style="background: var(--c-green);">🔄 Sincronitzar</button>
+                        <button type="button" onclick="app.toggleCloudDrawer(false); app.openConfigModal('github');" style="background: #2c3e50;">⚙️ Núvol i Família</button>
+                        <button type="button" onclick="app.toggleCloudDrawer(false); app.openShareModal();" style="background: #2471a3;">📲 Compartir Idees</button>
+                        <button type="button" onclick="app.exportData(); app.toggleCloudDrawer(false);" style="background: var(--c-green-dark);">Exportar ⬇️</button>
+                        <button type="button" onclick="app.toggleCloudDrawer(false); document.getElementById('importFile').click();" style="background: var(--c-gold); color: black;">Importar ⬆️</button>
+                        <input type="file" id="importFile" accept=".json" style="display:none;" onchange="app.importData(event)">
+                    </div>
+                </div>
+
                 <h2>Nadal Tracker 🎁🎄</h2>
                 <div id="xmasCountdown" class="countdown-pill"></div>
                 <div class="budgets" onclick="app.openBudgetsModal('ratios')" style="cursor: pointer;" title="Clica per veure ràtios, límits i comparativa">
@@ -33,7 +56,7 @@
                         <span id="budgetGastatSub" class="budget-sub hidden"></span>
                     </div>
                     <div><b>Executat</b><span id="budgetPct">0%</span></div>
-                    <div style="font-size:1.4em; display:flex; align-items:center;">📊</div>
+                    <div style="font-size:1.3em; display:flex; align-items:center;">📊</div>
                 </div>
                 <div class="header-progress-wrap">
                     <div id="headerProgressBar" class="header-progress-bar"></div>
@@ -42,57 +65,43 @@
         </header>
 
         <div id="mainContainer" class="container">
-            <div class="sync-panel">
-                <div class="cloud-status-row">
-                    <span id="cloudStatusBadge">⚪ Mode Local (Núvol no configurat)</span>
-                    <span onclick="app.manualSync()" style="cursor:pointer; color:var(--c-green-dark); font-weight:bold;">🔄 Sincronitzar</span>
-                </div>
-                <div>Última modificació: <b id="lastSync">Mai</b></div>
-                <div class="buttons">
-                    <button onclick="app.openConfigModal('github')" style="background: #2c3e50; margin:0;">⚙️ Núvol i Família</button>
-                    <button onclick="app.openShareModal()" style="background: #2471a3; margin:0;">📲 Idees</button>
-                    <button onclick="app.exportData()" style="background: var(--c-green-dark); margin:0;">Exportar ⬇️</button>
-                    <button onclick="document.getElementById('importFile').click()" style="background: var(--c-gold); color: black; margin:0;">Importar ⬆️</button>
-                    <input type="file" id="importFile" accept=".json" style="display:none;" onchange="app.importData(event)">
-                </div>
-            </div>
-
-            <!-- SELECTOR DE PANTALLA PRINCIPAL -->
-            <div class="view-switcher">
-                <button id="viewBtnList" class="view-tab active" onclick="app.switchMainView('list')">📋 Llista i Logística</button>
-                <button id="viewBtnBoard" class="view-tab" onclick="app.switchMainView('board')">👨‍👩‍👧‍👧 Mapa per Persona</button>
-            </div>
-
             <!-- VISTA 1: LLISTA I LOGÍSTICA -->
             <div id="listViewSection">
-                <div class="filters">
-                    <input type="text" id="searchFilter" placeholder="🔍 Buscar text, categoria o comentaris..." onkeyup="app.renderAll()">
-                    <select id="typeFilter" onchange="app.renderAll()">
-                        <option value="all">🎁+🎄 Tot (Regals i Despeses)</option>
-                        <option value="gift">🎁 Tots els Regals</option>
-                        <option value="gift_ours">🏠 Regals Nostres (Casa)</option>
-                        <option value="gift_others">🏡 D'una altra casa (Rebrem)</option>
-                        <option value="expense">🎄 Altres Despeses Nadalenques</option>
-                    </select>
-                    <select id="statusFilter" onchange="app.renderAll()">
-                        <option value="all">Tots els estats</option>
-                        <option value="Idea">💡 Només Idees</option>
-                        <option value="Decidit">🎯 Decidits (per comprar)</option>
-                        <option value="Confirmat">🤝 Confirmats (altres cases)</option>
-                        <option value="Pendent">⏳ Pendents nostres</option>
-                    </select>
-                    <select id="eventFilter" onchange="app.renderAll()">
-                        <option value="all">Tots els esdeveniments</option>
-                        <option value="❓ Per decidir">❓ Per decidir</option>
-                        <option value="🎄 Tió Casa">🎄 Tió Casa</option>
-                        <option value="🪵 Tió Família">🪵 Tió Família (Rondes)</option>
-                        <option value="🎅 Pare Noel">🎅 Pare Noel</option>
-                        <option value="👑 Reis">👑 Reis</option>
-                        <option value="✨ General Festes">✨ General Festes</option>
-                    </select>
-                    <select id="personFilter" onchange="app.renderAll()">
-                        <option value="all">Per a tothom</option>
-                    </select>
+                <div class="filters-panel">
+                    <div class="filters-search-row">
+                        <input type="text" id="searchFilter" placeholder="🔍 Buscar regal, categoria o notes..." onkeyup="app.renderAll()">
+                        <button type="button" id="toggleFiltersBtn" class="filters-toggle-btn" onclick="app.toggleMobileFilters()" title="Mostrar o amagar filtres">
+                            🎛️ <span id="activeFiltersCount" class="filter-count-badge hidden">0</span>
+                        </button>
+                    </div>
+
+                    <div id="filtersBody" class="filters-body">
+                        <div class="filter-section">
+                            <div class="filter-section-header">
+                                <span class="filter-group-label">Estats (toca per marcar-ne un o diversos):</span>
+                                <button type="button" id="clearFiltersBtn" class="clear-filters-btn hidden" onclick="app.clearListFilters()">✕ Netejar filtres</button>
+                            </div>
+                            <div id="statusPillsContainer" class="filter-pills-row"></div>
+                        </div>
+
+                        <div class="filter-section">
+                            <span class="filter-group-label">Esdeveniments:</span>
+                            <div id="eventPillsContainer" class="filter-pills-row"></div>
+                        </div>
+
+                        <div class="filters-selects-row">
+                            <select id="typeFilter" onchange="app.renderAll()">
+                                <option value="all">🎁+🎄 Tot (Regals i Despeses)</option>
+                                <option value="gift">🎁 Tots els Regals</option>
+                                <option value="gift_ours">🏠 Regals Nostres (Casa)</option>
+                                <option value="gift_others">🏡 D'una altra casa (Rebrem)</option>
+                                <option value="expense">🎄 Altres Despeses Nadalenques</option>
+                            </select>
+                            <select id="personFilter" onchange="app.renderAll()">
+                                <option value="all">👤 Per a tothom</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
                 
                 <div id="giftList"></div>
@@ -103,11 +112,6 @@
                 <div class="board-filters">
                     <select id="boardEventFilter" onchange="app.renderBoard()">
                         <option value="all">📅 Tots els esdeveniments</option>
-                        <option value="❓ Per decidir">❓ Per decidir</option>
-                        <option value="🎄 Tió Casa">🎄 Tió Casa</option>
-                        <option value="🪵 Tió Família">🪵 Tió Família</option>
-                        <option value="🎅 Pare Noel">🎅 Pare Noel</option>
-                        <option value="👑 Reis">👑 Reis</option>
                     </select>
                     <select id="boardStatusFilter" onchange="app.renderBoard()">
                         <option value="all">🏷️ Tots (Consolidats + Idees)</option>
@@ -123,12 +127,54 @@
 
                 <div id="personBoardContainer"></div>
             </div>
+
+            <!-- VISTA 3: CALENDARI D'ADVENT (24 DIES) -->
+            <div id="adventViewSection" class="hidden">
+                <div id="adventSummaryCard" class="advent-summary-card"></div>
+
+                <div class="advent-filter-bar">
+                    <button type="button" id="advFilterAll" class="filter-pill active" onclick="app.setAdventFilter('all')">🗓️ Tots (24)</button>
+                    <button type="button" id="advFilterEmpty" class="filter-pill" onclick="app.setAdventFilter('empty')">⬜ Buits</button>
+                    <button type="button" id="advFilterPlanned" class="filter-pill" onclick="app.setAdventFilter('planned')">💡 Idees / Decidits</button>
+                    <button type="button" id="advFilterDone" class="filter-pill" onclick="app.setAdventFilter('done')">✅ A punt</button>
+                </div>
+
+                <div id="adventGridContainer"></div>
+            </div>
+
+            <!-- VISTA 4: DINAR DE SANTA LLÚCIA -->
+            <div id="santaLluciaViewSection" class="hidden">
+                <div id="santaLluciaSummary" class="sl-summary-card"></div>
+                <div id="santaLluciaList"></div>
+            </div>
         </div>
+
         <footer class="app-footer">
-            <div><strong>🎄 Nadal Tracker v7.1</strong> · Arquitectura Client-Side &amp; Zero-Knowledge</div>
+            <div><strong>🎄 Nadal Tracker v7.2</strong> · Arquitectura Client-Side &amp; Zero-Knowledge</div>
             <div>Dades privades sincronitzades via GitHub API · Xifratge local de secrets · Sense cookies ni rastrejadors</div>
         </footer>
-        <div class="floating-btn" onclick="app.openModal()">+</div>
+
+        <div id="floatingAddBtn" class="floating-btn" onclick="app.openModal()">+</div>
+
+        <!-- BARRA DE NAVEGACIÓ INFERIOR FIXA -->
+        <nav class="bottom-nav" aria-label="Navegació principal">
+            <button type="button" id="navBtnList" class="bottom-nav-btn active" onclick="app.switchMainView('list')">
+                <span class="nav-icon">📋</span>
+                <span class="nav-label">Llista</span>
+            </button>
+            <button type="button" id="navBtnBoard" class="bottom-nav-btn" onclick="app.switchMainView('board')">
+                <span class="nav-icon">👨‍👩‍👧‍👧</span>
+                <span class="nav-label">Mapa</span>
+            </button>
+            <button type="button" id="navBtnAdvent" class="bottom-nav-btn" onclick="app.switchMainView('advent')">
+                <span class="nav-icon">🕯️</span>
+                <span class="nav-label">Advent</span>
+            </button>
+            <button type="button" id="navBtnSantaLlucia" class="bottom-nav-btn" onclick="app.switchMainView('santallucia')">
+                <span class="nav-icon">🍲</span>
+                <span class="nav-label">Sta. Llúcia</span>
+            </button>
+        </nav>
     </div>
 
     <!-- MODAL: CONFIGURACIÓ NÚVOL GITHUB I FAMÍLIA -->
@@ -164,14 +210,14 @@
                 <button type="button" id="btnMagicLink" class="secondary" onclick="app.copyMagicLink()" style="margin-top: 10px;">🔗 Copiar Enllaç Màgic (per al mòbil)</button>
             </div>
 
-            <!-- Pestanya 2: Configuració Familiar (es desa dins dades.json al núvol) -->
+            <!-- Pestanya 2: Configuració Familiar -->
             <div id="tabCfgFamily" class="hidden">
                 <p style="font-size: 0.84em; color: #555; margin-bottom: 6px;">Aquesta configuració viatja dins de l'arxiu privat al núvol (mai al codi públic).</p>
 
                 <label class="cfg-label">Usuaris amb PIN (separats per coma):</label>
                 <input type="text" id="cfgParents" placeholder="Ex: Mare, Pare">
 
-                <label class="cfg-label">Nucli Familiar — Els 4 de casa (ordre: fills, pares):</label>
+                <label class="cfg-label">Nucli Familiar — Els de casa (ordre: fills, pares):</label>
                 <input type="text" id="cfgCasa" placeholder="Ex: Filla 1, Filla 2, Mare, Pare">
 
                 <label class="cfg-label">Nom Bloc Familiar Directe 1:</label>
@@ -211,7 +257,7 @@
             <label style="display:block; margin-top: 12px; font-weight: bold; font-size: 0.9em;">1. Tria per a qui vols llistar idees:</label>
             <div class="preset-row">
                 <button type="button" id="presetKidsBtn" class="preset-btn" onclick="app.selectSharePreset('kids')">👧👦 Nens de casa</button>
-                <button type="button" class="preset-btn" onclick="app.selectSharePreset('casa')">🏠 Tots 4 de casa</button>
+                <button type="button" class="preset-btn" onclick="app.selectSharePreset('casa')">🏠 Tots de casa</button>
                 <button type="button" class="preset-btn" onclick="app.selectSharePreset('none')">🧹 Cap</button>
             </div>
             <div id="sharePeopleContainer" class="multi-box" style="max-height: 135px;"></div>
@@ -373,7 +419,46 @@
         </div>
     </div>
 
-    <!-- --- BLOC CONTROLADOR I MODEL (JS) --- -->
+    <!-- MODAL: DIA DEL CALENDARI D'ADVENT -->
+    <div id="adventModal" class="modal">
+        <div class="modal-content">
+            <h2 id="advModalTitle" style="margin-bottom: 4px;">🕯️ Dia 1 de Desembre</h2>
+            <div id="advModalSubtitle" class="adv-modal-sub"></div>
+            <input type="hidden" id="advDayInput">
+
+            <label class="cfg-label">Què toca aquest dia? (Regalet o activitat):</label>
+            <input type="text" id="advTitle" placeholder="Ex: Llibre de Nadal, Taller de galetes, Adhesius...">
+
+            <label class="cfg-label">Estat:</label>
+            <select id="advState">
+                <option value="Idea">💡 Idea (Pendent de decidir)</option>
+                <option value="Decidit">🎯 Decidit (Pendent de comprar/preparar)</option>
+                <option value="Comprat">✅ A punt / Comprat (Suma a despesa)</option>
+            </select>
+
+            <label class="cfg-label">Preu (€) (Opcional — suma a Calendari d'Advent):</label>
+            <div class="price-row">
+                <input type="number" id="advPrice" step="0.01" placeholder="Ex: 6.50 (Opcional)">
+                <select id="advPriceType">
+                    <option value="definitive">✅ Preu Definitiu</option>
+                    <option value="approx">~ Preu Aproximat</option>
+                </select>
+            </div>
+
+            <label class="cfg-label">URL / Enllaç (Opcional):</label>
+            <input type="url" id="advUrl" placeholder="https://...">
+
+            <label class="cfg-label">Notes / On ho tenim guardat (Opcional):</label>
+            <textarea id="advComments" rows="2" placeholder="Ex: Guardat a l'armari de dalt, imprimir val..."></textarea>
+
+            <div style="display:flex; gap:10px; margin-top: 20px;">
+                <button onclick="app.saveAdventDay()">Guardar</button>
+                <button class="danger" onclick="app.closeModal('adventModal')">Cancel·lar</button>
+            </div>
+            <button type="button" id="btnClearAdvent" class="danger hidden" onclick="app.clearAdventDay()" style="background:#999; margin-top:10px;">🗑️ Buidar aquest dia</button>
+        </div>
+    </div>
+
 <script src="app.js"></script>
 </body>
 </html>
