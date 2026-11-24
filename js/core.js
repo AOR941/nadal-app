@@ -897,8 +897,10 @@ export const core = {
             }
         });
 
-        const wideViews = ['board', 'advent'];
-        document.getElementById('mainContainer').classList.toggle('wide-view', wideViews.includes(view));
+        const wideViews = ['list', 'board', 'advent'];
+        const mainCont = document.getElementById('mainContainer');
+        mainCont.classList.toggle('wide-view', wideViews.includes(view));
+        if (view !== 'list') mainCont.classList.remove('kanban-wide');
 
         const activeViewObj = core.views[view];
         const hideFab = activeViewObj && typeof activeViewObj.hideFloatingBtn === 'function' ? activeViewObj.hideFloatingBtn() : false;
