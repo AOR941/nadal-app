@@ -14,6 +14,8 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <div id="pullRefreshIndicator" class="pull-refresh-indicator hidden">⬇️ Estira avall per sincronitzar</div>
+
     <div id="mainApp">
         <header id="appHeader">
             <div class="header-inner">
@@ -39,7 +41,7 @@
                     <div class="cloud-drawer-buttons">
                         <button type="button" onclick="app.manualSync(); app.toggleCloudDrawer(false);" style="background: var(--c-green);">🔄 Sincronitzar</button>
                         <button type="button" onclick="app.toggleCloudDrawer(false); app.openConfigModal('github');" style="background: #2c3e50;">⚙️ Núvol i Família</button>
-                        <button type="button" onclick="app.toggleCloudDrawer(false); app.openShareModal();" style="background: #2471a3;">📲 Compartir Idees</button>
+                        <button type="button" onclick="app.toggleCloudDrawer(false); app.openShareModal();" style="background: #2471a3;">📲 Compartir</button>
                         <button type="button" onclick="app.exportData(); app.toggleCloudDrawer(false);" style="background: var(--c-green-dark);">Exportar ⬇️</button>
                         <button type="button" onclick="app.toggleCloudDrawer(false); document.getElementById('importFile').click();" style="background: var(--c-gold); color: black;">Importar ⬆️</button>
                         <input type="file" id="importFile" accept=".json" style="display:none;" onchange="app.importData(event)">
@@ -65,93 +67,15 @@
         </header>
 
         <div id="mainContainer" class="container">
-            <!-- VISTA 1: LLISTA I LOGÍSTICA -->
-            <div id="listViewSection">
-                <div class="filters-panel">
-                    <div class="filters-search-row">
-                        <input type="text" id="searchFilter" placeholder="🔍 Buscar regal, categoria o notes..." onkeyup="app.renderAll()">
-                        <button type="button" id="toggleFiltersBtn" class="filters-toggle-btn" onclick="app.toggleMobileFilters()" title="Mostrar o amagar filtres">
-                            🎛️ <span id="activeFiltersCount" class="filter-count-badge hidden">0</span>
-                        </button>
-                    </div>
-
-                    <div id="filtersBody" class="filters-body">
-                        <div class="filter-section">
-                            <div class="filter-section-header">
-                                <span class="filter-group-label">Estats (toca per marcar-ne un o diversos):</span>
-                                <button type="button" id="clearFiltersBtn" class="clear-filters-btn hidden" onclick="app.clearListFilters()">✕ Netejar filtres</button>
-                            </div>
-                            <div id="statusPillsContainer" class="filter-pills-row"></div>
-                        </div>
-
-                        <div class="filter-section">
-                            <span class="filter-group-label">Esdeveniments:</span>
-                            <div id="eventPillsContainer" class="filter-pills-row"></div>
-                        </div>
-
-                        <div class="filters-selects-row">
-                            <select id="typeFilter" onchange="app.renderAll()">
-                                <option value="all">🎁+🎄 Tot (Regals i Despeses)</option>
-                                <option value="gift">🎁 Tots els Regals</option>
-                                <option value="gift_ours">🏠 Regals Nostres (Casa)</option>
-                                <option value="gift_others">🏡 D'una altra casa (Rebrem)</option>
-                                <option value="expense">🎄 Altres Despeses Nadalenques</option>
-                            </select>
-                            <select id="personFilter" onchange="app.renderAll()">
-                                <option value="all">👤 Per a tothom</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-                
-                <div id="giftList"></div>
-            </div>
-
-            <!-- VISTA 2: MAPA PER PERSONA -->
-            <div id="boardViewSection" class="hidden">
-                <div class="board-filters">
-                    <select id="boardEventFilter" onchange="app.renderBoard()">
-                        <option value="all">📅 Tots els esdeveniments</option>
-                    </select>
-                    <select id="boardStatusFilter" onchange="app.renderBoard()">
-                        <option value="all">🏷️ Tots (Consolidats + Idees)</option>
-                        <option value="consolidated">✅ Només Consolidats (sense Idees)</option>
-                        <option value="Idea">💡 Només Idees</option>
-                        <option value="pending">⏳ Pendents nostres de comprar/tenir</option>
-                    </select>
-                    <label class="board-toggle-empty">
-                        <input type="checkbox" id="boardHideEmpty" onchange="app.renderBoard()">
-                        Amagar caixes buides
-                    </label>
-                </div>
-
-                <div id="personBoardContainer"></div>
-            </div>
-
-            <!-- VISTA 3: CALENDARI D'ADVENT (24 DIES + BATERIA D'IDEES) -->
-            <div id="adventViewSection" class="hidden">
-                <div id="adventSummaryCard" class="advent-summary-card"></div>
-
-                <div class="advent-filter-bar">
-                    <button type="button" id="advFilterAll" class="filter-pill active" onclick="app.setAdventFilter('all')">🗓️ Tots (24)</button>
-                    <button type="button" id="advFilterEmpty" class="filter-pill" onclick="app.setAdventFilter('empty')">⬜ Buits</button>
-                    <button type="button" id="advFilterPlanned" class="filter-pill" onclick="app.setAdventFilter('planned')">💡 Idees / Decidits</button>
-                    <button type="button" id="advFilterDone" class="filter-pill" onclick="app.setAdventFilter('done')">✅ A punt</button>
-                </div>
-
-                <div id="adventGridContainer"></div>
-                <div id="adventPoolSection" class="advent-pool-section"></div>
-            </div>
-
-            <!-- VISTA 4: DINAR DE SANTA LLÚCIA -->
-            <div id="santaLluciaViewSection" class="hidden">
-                <div id="santaLluciaSummary" class="sl-summary-card"></div>
-                <div id="santaLluciaList"></div>
-            </div>
+            <!-- Contenidors muntats per cada mòdul de pestanya -->
+            <div id="listViewSection"></div>
+            <div id="boardViewSection" class="hidden"></div>
+            <div id="adventViewSection" class="hidden"></div>
+            <div id="santaLluciaViewSection" class="hidden"></div>
         </div>
 
         <footer class="app-footer">
-            <div><strong>🎄 Nadal Tracker v7.2</strong> · Arquitectura Client-Side &amp; Zero-Knowledge</div>
+            <div><strong>🎄 Nadal Tracker v8.0</strong> · Arquitectura Modular Client-Side &amp; Zero-Knowledge</div>
             <div>Dades privades sincronitzades via GitHub API · Xifratge local de secrets · Sense cookies ni rastrejadors</div>
         </footer>
 
@@ -187,7 +111,6 @@
                 <button id="tabBtnCfgFamily" class="tab-btn" onclick="app.switchConfigTab('family')">👨‍👩‍👧‍👧 Família i Rondes</button>
             </div>
 
-            <!-- Pestanya 1: GitHub -->
             <div id="tabCfgGithub">
                 <p style="font-size: 0.85em; color: #555; margin-bottom: 8px;">Aquestes dades es guarden només a aquest navegador per connectar-se al vostre repositori privat.</p>
                 
@@ -211,7 +134,6 @@
                 <button type="button" id="btnMagicLink" class="secondary" onclick="app.copyMagicLink()" style="margin-top: 10px;">🔗 Copiar Enllaç Màgic (per al mòbil)</button>
             </div>
 
-            <!-- Pestanya 2: Configuració Familiar -->
             <div id="tabCfgFamily" class="hidden">
                 <p style="font-size: 0.84em; color: #555; margin-bottom: 6px;">Aquesta configuració viatja dins de l'arxiu privat al núvol (mai al codi públic).</p>
 
@@ -223,7 +145,7 @@
 
                 <label class="cfg-label">Nom Bloc Familiar Directe 1:</label>
                 <input type="text" id="cfgDir1Name" placeholder="Ex: Família 1">
-                <input type="text" id="cfgDir1Members" placeholder="Membres separats per coma (ex: Avi, Àvia, Gos (gos))">
+                <input type="text" id="cfgDir1Members" placeholder="Membres separats per coma">
 
                 <label class="cfg-label">Nom Bloc Familiar Directe 2:</label>
                 <input type="text" id="cfgDir2Name" placeholder="Ex: Família 2">
@@ -249,19 +171,25 @@
         </div>
     </div>
 
-    <!-- MODAL: COMPARTIR IDEES DE REGAL -->
+    <!-- MODAL: COMPARTIR PER WHATSAPP -->
     <div id="shareModal" class="modal">
         <div class="modal-content">
-            <h2>📲 Compartir Idees de Regal</h2>
-            <p style="font-size: 0.85em; color: #555; margin-top: 4px;">Genera un llistat amb les <b>Idees</b> no confirmades (els regals <i>Top Secret</i> mai s'inclouen). Pots editar el text lliurement abans de copiar-lo.</p>
+            <h2>📲 Compartir per WhatsApp</h2>
+            <p style="font-size: 0.85em; color: #555; margin-top: 4px;">Tria quins regals vols incloure al missatge (els regals <i>Top Secret</i> mai s'inclouen). Pots editar el text abans de copiar-lo.</p>
 
-            <label style="display:block; margin-top: 12px; font-weight: bold; font-size: 0.9em;">1. Tria per a qui vols llistar idees:</label>
+            <div class="share-opts">
+                <label><input type="checkbox" id="shareIncIdeas" checked onchange="app.generateShareText()"> 💡 Idees pendents</label>
+                <label><input type="checkbox" id="shareIncConfirmedOurs" onchange="app.generateShareText()"> 🏠 Nostres decidits/comprats</label>
+                <label><input type="checkbox" id="shareIncConfirmedOthers" onchange="app.generateShareText()"> 🏡 Confirmats d'altres cases</label>
+            </div>
+
+            <label style="display:block; margin-top: 10px; font-weight: bold; font-size: 0.9em;">1. Tria per a qui vols llistar regals:</label>
             <div class="preset-row">
                 <button type="button" id="presetKidsBtn" class="preset-btn" onclick="app.selectSharePreset('kids')">👧👦 Nens de casa</button>
                 <button type="button" class="preset-btn" onclick="app.selectSharePreset('casa')">🏠 Tots de casa</button>
                 <button type="button" class="preset-btn" onclick="app.selectSharePreset('none')">🧹 Cap</button>
             </div>
-            <div id="sharePeopleContainer" class="multi-box" style="max-height: 135px;"></div>
+            <div id="sharePeopleContainer" class="multi-box" style="max-height: 130px;"></div>
 
             <div class="share-opts">
                 <label><input type="checkbox" id="shareIncPrice" checked onchange="app.generateShareText()"> Preu</label>
@@ -271,7 +199,7 @@
             </div>
 
             <label style="display:block; font-weight: bold; font-size: 0.9em;">2. Revisa o edita el missatge:</label>
-            <textarea id="shareTextArea" rows="9" placeholder="Marca una o més persones a dalt per generar la llista d'idees..."></textarea>
+            <textarea id="shareTextArea" rows="9" placeholder="Marca una o més persones a dalt per generar el text..."></textarea>
 
             <div style="display:flex; gap:10px; margin-top: 15px;">
                 <button id="btnCopyShare" onclick="app.copyShareText()" style="background: #2471a3;">📋 Copiar text</button>
@@ -354,32 +282,46 @@
             </div>
 
             <div id="giftOnlyFields">
-                <label>Per a qui? (Pots marcar-ne diversos):</label>
-                <div id="gRecipientsContainer" class="multi-box"></div>
-
-                <label style="margin-top: 10px; display:block;">De part de qui? (Qui ho regala):</label>
-                <div id="gFromContainer" class="multi-box"></div>
+                <div class="modal-form-two-col">
+                    <div>
+                        <label>Per a qui? (Pots marcar-ne diversos):</label>
+                        <div id="gRecipientsContainer" class="multi-box"></div>
+                    </div>
+                    <div>
+                        <label>De part de qui? (Si hi ha altres cases, es marcarà com a conjunt):</label>
+                        <div id="gFromContainer" class="multi-box"></div>
+                    </div>
+                </div>
 
                 <label id="paidByUsLabel" class="toggle-paid">
                     <input type="checkbox" id="gPaidByUs" checked onchange="app.onPaidByUsChange()">
-                    <span id="paidByUsText">💰 Ho paguem nosaltres (Suma a la despesa)</span>
+                    <span id="paidByUsText">💰 Ho paguem nosaltres (Anotar la nostra aportació)</span>
                 </label>
             </div>
 
-            <div id="eventContainer">
-                <label style="margin-top:15px; display:block;">Esdeveniment / Moment:</label>
-                <select id="gEvent" onchange="app.toggleRounds()"></select>
+            <div class="modal-form-two-col">
+                <div id="eventContainer">
+                    <label style="margin-top:12px; display:block;">Esdeveniment / Moment:</label>
+                    <select id="gEvent" onchange="app.toggleRounds()"></select>
+
+                    <div id="roundContainer" class="hidden">
+                        <label style="color:var(--c-red); font-weight:bold;">Ronda del Tió:</label>
+                        <select id="gRound"></select>
+                    </div>
+                </div>
+
+                <div>
+                    <label id="lblState" style="margin-top:12px; display:block;">Estat:</label>
+                    <select id="gState" onchange="app.toggleDeliveryField()"></select>
+                </div>
             </div>
 
-            <div id="roundContainer" class="hidden">
-                <label style="color:var(--c-red); font-weight:bold;">Ronda del Tió:</label>
-                <select id="gRound"></select>
+            <div id="deliveryDateContainer" class="hidden">
+                <label style="margin-top:12px; display:block;">🚚 Data prevista d'entrega:</label>
+                <input type="date" id="gDeliveryDate">
             </div>
 
-            <label id="lblState" style="margin-top:12px; display:block;">Estat:</label>
-            <select id="gState"></select>
-
-            <label id="lblPrice" style="margin-top:12px; display:block;">Preu (€) i Tipus d'Import:</label>
+            <label id="lblPrice" style="margin-top:12px; display:block;">Preu (€ — nostra part) i Tipus d'Import:</label>
             <div class="price-row">
                 <input type="number" id="gPrice" step="0.01" placeholder="Ex: 25 (Opcional)">
                 <select id="gPriceType">
@@ -388,14 +330,19 @@
                 </select>
             </div>
 
-            <label>URL / Enllaç botiga (Opcional):</label>
-            <input type="url" id="gUrl" placeholder="https://...">
-
-            <label>Enllaç Imatge (Opcional):</label>
-            <input type="url" id="gImage" placeholder="https://.../foto.jpg">
+            <div class="modal-form-two-col">
+                <div>
+                    <label>URL / Enllaç botiga (Opcional):</label>
+                    <input type="url" id="gUrl" placeholder="https://...">
+                </div>
+                <div>
+                    <label>Enllaç Imatge (Opcional):</label>
+                    <input type="url" id="gImage" placeholder="https://.../foto.jpg">
+                </div>
+            </div>
             
             <label>Comentaris / Anotacions (Opcional):</label>
-            <textarea id="gComments" rows="2" placeholder="Talla, color, menú, on ho tenim amagat..."></textarea>
+            <textarea id="gComments" rows="2" placeholder="Talla, color, seguiment enviament, on ho tenim amagat..."></textarea>
 
             <div id="secretWrapper">
                 <div id="secretContainer" style="background: #f4e8fb; padding: 10px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #8e44ad; display:none;">
@@ -420,62 +367,6 @@
         </div>
     </div>
 
-    <!-- MODAL: DIA DEL CALENDARI D'ADVENT / BATERIA D'IDEES -->
-    <div id="adventModal" class="modal">
-        <div class="modal-content">
-            <h2 id="advModalTitle" style="margin-bottom: 4px;">🕯️ Dia 1 de Desembre</h2>
-            <div id="advModalSubtitle" class="adv-modal-sub"></div>
-            <input type="hidden" id="advDayInput">
-            <input type="hidden" id="advPoolIdInput">
-
-            <!-- Selector ràpid des de la Bateria d'Idees (visible quan s'obre un dia del calendari) -->
-            <div id="advPickFromPoolBox" class="adv-pick-pool-box hidden">
-                <label class="cfg-label" style="margin-top:0; color:var(--c-green-dark);">🧺 Assignar des de la Bateria d'Idees:</label>
-                <div class="adv-pick-pool-row">
-                    <select id="advPickFromPoolSelect"></select>
-                    <button type="button" onclick="app.assignSelectedPoolToCurrentDay()">Assignar</button>
-                </div>
-            </div>
-
-            <label class="cfg-label">Què toca? (Regalet o activitat):</label>
-            <input type="text" id="advTitle" placeholder="Ex: Llibre de Nadal, Taller de galetes, Adhesius...">
-
-            <label class="cfg-label">Data assignada:</label>
-            <select id="advTargetDaySelect"></select>
-
-            <label class="cfg-label">Estat:</label>
-            <select id="advState">
-                <option value="Idea">💡 Idea (Pendent de decidir)</option>
-                <option value="Decidit">🎯 Decidit (Pendent de comprar/preparar)</option>
-                <option value="Comprat">✅ A punt / Comprat (Suma a despesa)</option>
-            </select>
-
-            <label class="cfg-label">Preu (€) (Opcional — suma a Calendari d'Advent):</label>
-            <div class="price-row">
-                <input type="number" id="advPrice" step="0.01" placeholder="Ex: 6.50 (Opcional)">
-                <select id="advPriceType">
-                    <option value="definitive">✅ Preu Definitiu</option>
-                    <option value="approx">~ Preu Aproximat</option>
-                </select>
-            </div>
-
-            <label class="cfg-label">URL / Enllaç (Opcional):</label>
-            <input type="url" id="advUrl" placeholder="https://...">
-
-            <label class="cfg-label">Notes / On ho tenim guardat (Opcional):</label>
-            <textarea id="advComments" rows="2" placeholder="Ex: Guardat a l'armari de dalt, imprimir val..."></textarea>
-
-            <div style="display:flex; gap:10px; margin-top: 20px;">
-                <button onclick="app.saveAdventModal()">Guardar</button>
-                <button class="danger" onclick="app.closeModal('adventModal')">Cancel·lar</button>
-            </div>
-            <div style="display:flex; gap:10px; margin-top: 10px;">
-                <button type="button" id="btnMoveAdventToPool" class="secondary hidden" onclick="app.moveCurrentDayToPool()">📥 Tornar a la bateria</button>
-                <button type="button" id="btnClearAdvent" class="danger hidden" onclick="app.deleteOrClearAdvent()" style="background:#999;">🗑️ Buidar / Eliminar</button>
-            </div>
-        </div>
-    </div>
-
-<script src="app.js"></script>
+    <script type="module" src="js/main.js"></script>
 </body>
 </html>
