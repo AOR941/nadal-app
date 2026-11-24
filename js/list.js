@@ -1,7 +1,7 @@
 /* ==========================================================================
  * NADAL TRACKER - JS/LIST.JS (Índex de blocs)
- * [1] Estat del mòdul i helpers d'ordenació / entrega
- * [2] Muntatge de la vista i reconstrucció de píndoles dinàmiques
+ * [1] Estat del mòdul i helpers d'ordenació / entrega / amplada PC
+ * [2] Muntatge de la vista, col·lapse de filtres i píndoles dinàmiques
  * [3] Renderitzat de targetes, llista, graella i Kanban (drag & drop)
  * ========================================================================== */
 
@@ -13,20 +13,29 @@ export const listView = {
     sectionId: 'listViewSection',
     hideFloatingBtn: () => false,
 
-    /* --- [1] ESTAT DEL MÒDUL I HELPERS D'ORDENACIÓ / ENTREGA --- */
+    /* --- [1] ESTAT DEL MÒDUL I HELPERS D'ORDENACIÓ / ENTREGA / AMPLADA PC --- */
     selectedStates: [],
     selectedEvents: [],
     selectedPeople: [],
     deliveryOnly: false,
     sortBy: 'default', // 'default' | 'event' | 'state' | 'person' | 'price' | 'delivery'
-    pcLayout: 'auto',  // 'auto' | 'grid' | 'kanban-state' | 'kanban-event'
-    mobileFiltersCollapsed: false,
+    pcLayout: 'grid',  // 'grid' | 'kanban-state' | 'kanban-event'
+    filtersCollapsed: true,
     draggedGiftId: null,
 
     getEffectivePcLayout: () => {
         if (window.innerWidth <= 768) return 'column';
-        if (listView.pcLayout === 'auto') return 'grid';
-        return listView.pcLayout;
+        return listView.pcLayout || 'grid';
+    },
+
+    syncContainerWidth: () => {
+        if (core.activeMainView !== 'list') return;
+        const mainCont = document.getElementById('mainContainer');
+        if (!mainCont) return;
+        const layout = listView.getEffectivePcLayout();
+        const isKanban = (layout === 'kanban-state' || layout === 'kanban-event');
+        mainCont.classList.add('wide-view');
+        mainCont.classList.toggle('kanban-wide', isKanban);
     },
 
     getDeliveryMeta: (g, d) => {
@@ -60,7 +69,7 @@ export const listView = {
         return `${parseInt(d, 10)} ${months[idx] || m}`;
     },
 
-    /* --- [2] MUNTATGE DE LA VISTA I RECONSTRUCCIÓ DE PÍNDOLES DINÀMIQUES --- */
+    /* --- [2] MUNTATGE DE LA VISTA, COL·LAPSE DE FILTRES I PÍNDOLES DINÀMIQUES --- */
     mount: () => {
         const sec = document.getElementById(listView.sectionId);
         if (!sec) return;
@@ -69,19 +78,25 @@ export const listView = {
             <div class="filters-panel">
                 <div class="filters-search-row">
                     <input type="text" id="searchFilter" placeholder="🔍 Buscar regal, categoria o notes..." onkeyup="app.views.list.render()">
-                    <button type="button" id="toggleFiltersBtn" class="filters-toggle-btn" onclick="app.views.list.toggleMobileFilters()" title="Mostrar o amagar filtres">
-                        🎛️ <span id="activeFiltersCount" class="filter-count-badge hidden">0</span>
+                    <button type="button" id="toggleFiltersBtn" class="filters-toggle-btn" onclick="app.views.list.toggleFilters()" title="Mostrar o amagar filtres">
+                        🎛️ <span id="toggleFiltersText">Filtres</span> <span id="activeFiltersCount" class="filter-count-badge hidden">0</span> <span id="toggleFiltersCaret">▾</span>
                     </button>
+                    <button type="button" id="clearFiltersQuickBtn" class="clear-filters-btn hidden" onclick="app.views.list.clearFilters()" title="Netejar tots els filtres">✕</button>
                 </div>
 
-                <div id="filtersBody" class="filters-body">
+                <div id="filtersBody" class="filters-body collapsed">
+                    <div class="filter-section">
+                        <div class="filter-section-header">
+                            <span class="filter-group-label">Nucli de Casa (1 clic · combinació I):</span>
+                            <button type="button" id="clearFiltersBtn" class="clear-filters-btn hidden" onclick="app.views.list.clearFilters()">✕ Netejar tot</button>
+                        </div>
+                        <div id="familyPillsContainer" class="filter-pills-row"></div>
+                    </div>
+
                     <div class="filter-section">
                         <div class="filter-section-header">
                             <span class="filter-group-label">Estats (multi-selecció):</span>
-                            <div style="display:flex; gap:6px; align-items:center;">
-                                <button type="button" id="deliveryFilterBtn" class="filter-pill delivery-pill" onclick="app.views.list.toggleDeliveryFilter()">🚚 En camí</button>
-                                <button type="button" id="clearFiltersBtn" class="clear-filters-btn hidden" onclick="app.views.list.clearFilters()">✕ Netejar</button>
-                            </div>
+                            <button type="button" id="deliveryFilterBtn" class="filter-pill delivery-pill" onclick="app.views.list.toggleDeliveryFilter()">🚚 En camí</button>
                         </div>
                         <div id="statusPillsContainer" class="filter-pills-row"></div>
                     </div>
@@ -89,11 +104,6 @@ export const listView = {
                     <div class="filter-section">
                         <span class="filter-group-label">Esdeveniments:</span>
                         <div id="eventPillsContainer" class="filter-pills-row"></div>
-                    </div>
-
-                    <div class="filter-section">
-                        <span class="filter-group-label">Casa i Família Directa (1 clic):</span>
-                        <div id="familyPillsContainer" class="filter-pills-row"></div>
                     </div>
 
                     <div class="filters-selects-row">
@@ -105,7 +115,7 @@ export const listView = {
                             <option value="expense">🎄 Altres Despeses Nadalenques</option>
                         </select>
                         <select id="personFilter" onchange="app.views.list.onFilterControlChange()">
-                            <option value="all">👤 Totes les persones / grups</option>
+                            <option value="all">👤 Qualsevol altra persona / grup</option>
                         </select>
                     </div>
                 </div>
@@ -117,7 +127,7 @@ export const listView = {
                     <select id="listSortSelect" onchange="app.views.list.onSortChange(this.value)"></select>
                 </div>
                 <div id="pcLayoutSwitch" class="pc-layout-switch" title="Mode de visualització en pantalla gran">
-                    <button type="button" id="pcBtnGrid" class="pc-layout-btn" onclick="app.views.list.setPcLayout('grid')">▦ Graella</button>
+                    <button type="button" id="pcBtnGrid" class="pc-layout-btn active" onclick="app.views.list.setPcLayout('grid')">▦ Graella</button>
                     <button type="button" id="pcBtnKanbanState" class="pc-layout-btn" onclick="app.views.list.setPcLayout('kanban-state')">📌 Kanban Estat</button>
                     <button type="button" id="pcBtnKanbanEvent" class="pc-layout-btn" onclick="app.views.list.setPcLayout('kanban-event')">📅 Kanban Dia</button>
                 </div>
@@ -135,7 +145,7 @@ export const listView = {
         const filter = document.getElementById('personFilter');
         if (!filter) return;
         const prevPersonFilter = filter.value;
-        filter.innerHTML = '<option value="all">👤 Totes les persones / grups</option>';
+        filter.innerHTML = '<option value="all">👤 Qualsevol altra persona / grup</option>';
 
         const tree = {
             "Casa": cfg.casaMembers,
@@ -164,6 +174,14 @@ export const listView = {
         listView.syncSortOptions();
     },
 
+    toggleFilters: () => {
+        listView.filtersCollapsed = !listView.filtersCollapsed;
+        const body = document.getElementById('filtersBody');
+        const caret = document.getElementById('toggleFiltersCaret');
+        if (body) body.classList.toggle('collapsed', listView.filtersCollapsed);
+        if (caret) caret.innerText = listView.filtersCollapsed ? '▾' : '▴';
+    },
+
     toggleStateFilter: (stateVal) => {
         const idx = listView.selectedStates.indexOf(stateVal);
         if (idx > -1) listView.selectedStates.splice(idx, 1);
@@ -184,6 +202,15 @@ export const listView = {
         const idx = listView.selectedPeople.indexOf(personName);
         if (idx > -1) listView.selectedPeople.splice(idx, 1);
         else listView.selectedPeople.push(personName);
+        listView.renderFilterPills();
+        listView.render();
+    },
+
+    toggleAllCasaPills: () => {
+        const cfg = core.getConfig();
+        const casa = cfg.casaMembers || [];
+        const allSelected = casa.length > 0 && casa.every(m => listView.selectedPeople.includes(m));
+        listView.selectedPeople = allSelected ? [] : [...casa];
         listView.renderFilterPills();
         listView.render();
     },
@@ -212,12 +239,6 @@ export const listView = {
         if (personEl) personEl.value = 'all';
         listView.renderFilterPills();
         listView.render();
-    },
-
-    toggleMobileFilters: () => {
-        listView.mobileFiltersCollapsed = !listView.mobileFiltersCollapsed;
-        const body = document.getElementById('filtersBody');
-        if (body) body.classList.toggle('collapsed-mobile', listView.mobileFiltersCollapsed);
     },
 
     renderFilterPills: () => {
@@ -252,20 +273,29 @@ export const listView = {
             eventCont.appendChild(btn);
         });
 
-        const quickFamily = [...cfg.casaMembers, ...cfg.dir1Members, ...cfg.dir2Members];
-        listView.selectedPeople = listView.selectedPeople.filter(p => quickFamily.includes(p));
+        const casaMembers = cfg.casaMembers || [];
+        listView.selectedPeople = listView.selectedPeople.filter(p => casaMembers.includes(p));
 
         famCont.innerHTML = '';
-        quickFamily.forEach(personName => {
+        casaMembers.forEach(personName => {
             const isActive = listView.selectedPeople.includes(personName);
-            const label = /\(gos/i.test(personName) ? `🐶 ${personName.replace(/\s*\(gos.*?\)/i, '')}` : personName;
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = `filter-pill fam-pill ${isActive ? 'active' : ''}`;
-            btn.innerText = label;
+            btn.innerText = personName;
             btn.onclick = () => listView.togglePersonPill(personName);
             famCont.appendChild(btn);
         });
+
+        if (casaMembers.length > 1) {
+            const allSelected = casaMembers.every(m => listView.selectedPeople.includes(m));
+            const allBtn = document.createElement('button');
+            allBtn.type = 'button';
+            allBtn.className = `filter-pill fam-pill fam-all-pill ${allSelected ? 'active' : ''}`;
+            allBtn.innerText = `🏠 Tots ${casaMembers.length}`;
+            allBtn.onclick = () => listView.toggleAllCasaPills();
+            famCont.appendChild(allBtn);
+        }
 
         const delivBtn = document.getElementById('deliveryFilterBtn');
         if (delivBtn) delivBtn.classList.toggle('active', listView.deliveryOnly);
@@ -283,17 +313,20 @@ export const listView = {
         const countBadge = document.getElementById('activeFiltersCount');
         const toggleBtn = document.getElementById('toggleFiltersBtn');
         const clearBtn = document.getElementById('clearFiltersBtn');
+        const clearQuickBtn = document.getElementById('clearFiltersQuickBtn');
 
-        if (countBadge && toggleBtn && clearBtn) {
+        if (countBadge && toggleBtn) {
             if (activeCount > 0) {
                 countBadge.innerText = activeCount;
                 countBadge.classList.remove('hidden');
                 toggleBtn.classList.add('has-active');
-                clearBtn.classList.remove('hidden');
+                if (clearBtn) clearBtn.classList.remove('hidden');
+                if (clearQuickBtn) clearQuickBtn.classList.remove('hidden');
             } else {
                 countBadge.classList.add('hidden');
                 toggleBtn.classList.remove('has-active');
-                clearBtn.classList.add('hidden');
+                if (clearBtn) clearBtn.classList.add('hidden');
+                if (clearQuickBtn) clearQuickBtn.classList.add('hidden');
             }
         }
     },
@@ -304,12 +337,12 @@ export const listView = {
         const layout = listView.getEffectivePcLayout();
 
         const options = [
-            { value: 'default', label: 'Ordre d\'entrada' },
+            { value: 'default', label: "Ordre d'entrada" },
             { value: 'event', label: 'Esdeveniment (cronològic)' },
             { value: 'state', label: 'Estat (progrés)' },
             { value: 'person', label: 'Persona' },
             { value: 'price', label: 'Preu (€)' },
-            { value: 'delivery', label: 'Data d\'entrega' }
+            { value: 'delivery', label: "Data d'entrega" }
         ].filter(opt => {
             if (layout === 'kanban-state' && opt.value === 'state') return false;
             if (layout === 'kanban-event' && opt.value === 'event') return false;
@@ -357,8 +390,9 @@ export const listView = {
         const evVal = g.event || '❓ Per decidir';
         if (listView.selectedEvents.length > 0 && !listView.selectedEvents.includes(evVal)) return false;
 
+        // Intersecció (I / AND): el regal ha d'incloure TOTES les persones marcades
         if (listView.selectedPeople.length > 0) {
-            if (d.isExpense || !listView.selectedPeople.some(p => d.recips.includes(p))) return false;
+            if (d.isExpense || !listView.selectedPeople.every(p => d.recips.includes(p))) return false;
         }
 
         if (person !== 'all' && (d.isExpense || !d.recips.includes(person))) return false;
@@ -410,6 +444,7 @@ export const listView = {
         const list = document.getElementById('giftList');
         if (!list) return;
 
+        listView.syncContainerWidth();
         listView.syncSortOptions();
         list.innerHTML = '';
 
