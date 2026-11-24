@@ -53,6 +53,7 @@ body {
     transition: max-width 0.25s ease;
 }
 .container.wide-view { max-width: 1380px; }
+.container.kanban-wide { max-width: min(1760px, 97vw); }
 
 input[type="text"],
 input[type="number"],
@@ -321,11 +322,12 @@ header h2 { font-size: 1.25em; margin-top: 2px; }
 .filter-count-badge { background: var(--c-red); color: white; font-size: 0.78em; padding: 1px 6px; border-radius: 10px; }
 
 .filters-body { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e6dfd1; }
-.filters-body.collapsed-mobile { display: none; }
-
-@media (min-width: 769px) {
-    .filters-body.collapsed-mobile { display: block; }
-    .filters-toggle-btn { display: none; }
+.filters-body.collapsed { display: none; }
+.filters-search-row .clear-filters-btn {
+    padding: 9px 11px;
+    font-size: 0.88em;
+    border-radius: 8px;
+    flex-shrink: 0;
 }
 
 .filter-section { margin-bottom: 10px; }
@@ -386,6 +388,16 @@ header h2 { font-size: 1.25em; margin-top: 2px; }
 .filter-pill.fam-pill.active {
     background: #0f4023;
     border-color: #092916;
+}
+.filter-pill.fam-all-pill {
+    background: #eef6f0;
+    border-color: #a9dfbf;
+    color: var(--c-green-dark);
+}
+.filter-pill.fam-all-pill.active {
+    background: var(--c-green-dark);
+    border-color: #092916;
+    color: #fff;
 }
 
 .filters-selects-row { display: flex; gap: 8px; margin-top: 8px; }
@@ -474,7 +486,7 @@ header h2 { font-size: 1.25em; margin-top: 2px; }
 .kanban-board {
     display: grid;
     grid-auto-flow: column;
-    grid-auto-columns: minmax(255px, 1fr);
+    grid-auto-columns: minmax(235px, 1fr);
     gap: 12px;
     overflow-x: auto;
     padding-bottom: 10px;
@@ -529,6 +541,16 @@ header h2 { font-size: 1.25em; margin-top: 2px; }
 .board-filters select { flex: 1 1 180px; margin-top: 0; padding: 9px; font-size: 0.88em; }
 .board-toggle-empty { display: flex; align-items: center; gap: 8px; font-size: 0.88em; color: #444; cursor: pointer; padding: 4px 8px; user-select: none; }
 .board-toggle-empty input { width: 17px; height: 17px; margin: 0; }
+.board-pills-bar {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed #ece5d8;
+}
 
 .board-section-title {
     font-size: 1.05em;
