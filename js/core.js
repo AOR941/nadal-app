@@ -81,6 +81,8 @@ export const core = {
     isSyncing: false,
     queuedPush: false,
     pollTimer: null,
+    supersededShas: new Set(),
+    lastPushAt: 0,
 
     currentUser: null,
     pin: null,
@@ -114,6 +116,21 @@ export const core = {
     formatMoney: (val) => {
         const n = Number(val) || 0;
         return n.toLocaleString('ca-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+    },
+
+    parseMoneyInput: (raw) => {
+        if (raw === null || raw === undefined) return NaN;
+        let s = String(raw).trim().replace(/[€\s]/g, '');
+        if (!s) return NaN;
+        if (s.includes('.') && s.includes(',')) {
+            s = s.lastIndexOf(',') > s.lastIndexOf('.')
+                ? s.replace(/\./g, '').replace(',', '.')
+                : s.replace(/,/g, '');
+        } else {
+            s = s.replace(',', '.');
+        }
+        const n = parseFloat(s);
+        return Number.isFinite(n) ? n : NaN;
     },
 
     formatMemberLabel: (name) => {
@@ -500,6 +517,7 @@ export const core = {
 
     pullFromGithub: async (silent = false) => {
         if (!core.isGithubConfigured() || core.isSyncing) return false;
+        if (silent && Date.now() - core.lastPushAt < 25000) return true;
         core.isSyncing = true;
         if (!silent) core.setCloudStatus('syncing', 'Sincronitzant amb GitHub...');
 
@@ -541,6 +559,9 @@ export const core = {
             if (newEtag) core.ghEtag = newEtag;
 
             const payload = await res.json();
+            if (payload.sha && core.supersededShas.has(payload.sha)) {
+                return finishPull(true);
+            }
             const remoteChanged = (payload.sha !== core.ghSha);
             core.ghSha = payload.sha;
             const hasPendingSync = (localStorage.getItem('nadalPendingSync') === '1');
@@ -623,8 +644,12 @@ export const core = {
 
             const result = await res.json();
             if (result.content && result.content.sha) {
+                if (core.ghSha && core.ghSha !== result.content.sha) {
+                    core.supersededShas.add(core.ghSha);
+                }
                 core.ghSha = result.content.sha;
                 core.ghEtag = null;
+                core.lastPushAt = Date.now();
             }
 
             const nowTime = new Date().toLocaleTimeString('ca-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -1815,7 +1840,7 @@ export const core = {
 
             if (b.limitMode === 'block') {
                 const rawVal = core.getStoredEconVal(store, b.key, b.fallbacks || []);
-                const displayVal = rawVal > 0 ? rawVal : '';
+                const displayVal = rawVal > 0 ? String(rawVal).replace('.', ',') : '';
                 const safeKey = core.escapeHtml(b.key);
                 const hint = b.id === 'altres'
                     ? 'Amics, detalls puntuals o sense assignar'
@@ -1828,7 +1853,7 @@ export const core = {
                                 <div class="econ-input-block-title">${b.icon} ${core.escapeHtml(b.title)}</div>
                                 <div class="cfg-hint">${hint}</div>
                             </div>
-                            <input type="number" step="0.01" class="econ-num-input"
+                            <input type="text" inputmode="decimal" class="econ-num-input"
                                 data-econ-mode="${mode}" data-econ-block="${b.id}" data-econ-key="${safeKey}"
                                 value="${displayVal}" placeholder="0 €"
                                 oninput="app.recalcEconInputSubtotals('${mode}')">
@@ -1850,12 +1875,12 @@ export const core = {
             b.children.forEach(c => {
                 const fallbacks = c.key.startsWith('exp:') ? [c.rawName] : [];
                 const rawVal = core.getStoredEconVal(store, c.key, fallbacks);
-                const displayVal = rawVal > 0 ? rawVal : '';
+                const displayVal = rawVal > 0 ? String(rawVal).replace('.', ',') : '';
                 const safeKey = core.escapeHtml(c.key);
                 html += `
                     <div class="budget-row">
                         <span>${core.escapeHtml(c.label)}</span>
-                        <input type="number" step="0.01" class="econ-num-input"
+                        <input type="text" inputmode="decimal" class="econ-num-input"
                             data-econ-mode="${mode}" data-econ-block="${b.id}" data-econ-key="${safeKey}"
                             value="${displayVal}" placeholder="0 €"
                             oninput="app.recalcEconInputSubtotals('${mode}')">
@@ -1876,7 +1901,8 @@ export const core = {
         let grandTotal = 0;
 
         inputs.forEach(inp => {
-            const val = parseFloat(inp.value) || 0;
+            const parsed = core.parseMoneyInput(inp.value);
+            const val = Number.isNaN(parsed) ? 0 : parsed;
             const blk = inp.dataset.econBlock;
             blockSums[blk] = (blockSums[blk] || 0) + val;
             grandTotal += val;
@@ -1895,12 +1921,13 @@ export const core = {
         const next = Object.assign({}, core.data.budgets || {});
         document.querySelectorAll('input[data-econ-mode="limits"]').forEach(inp => {
             const key = inp.dataset.econKey;
-            const val = parseFloat(inp.value);
-            if (!isNaN(val) && val > 0) next[key] = Number(val.toFixed(2));
+            const val = core.parseMoneyInput(inp.value);
+            if (!Number.isNaN(val) && val > 0) next[key] = Number(val.toFixed(2));
             else delete next[key];
         });
         core.data.budgets = next;
         core.saveLocal();
+        core.renderEconInputsTab('limits');
         core.renderRatiosTab();
         core.renderAll();
         if (closeAfter) core.closeModal('budgetsModal');
@@ -1911,12 +1938,13 @@ export const core = {
         const next = Object.assign({}, core.data.lastYear || {});
         document.querySelectorAll('input[data-econ-mode="lastYear"]').forEach(inp => {
             const key = inp.dataset.econKey;
-            const val = parseFloat(inp.value);
-            if (!isNaN(val) && val > 0) next[key] = Number(val.toFixed(2));
+            const val = core.parseMoneyInput(inp.value);
+            if (!Number.isNaN(val) && val > 0) next[key] = Number(val.toFixed(2));
             else delete next[key];
         });
         core.data.lastYear = next;
         core.saveLocal();
+        core.renderEconInputsTab('lastYear');
         core.renderRatiosTab();
         if (closeAfter) core.closeModal('budgetsModal');
         else core.switchBudgetTab('ratios');
