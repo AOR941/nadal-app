@@ -1,11 +1,13 @@
 /* ==========================================================================
  * NADAL TRACKER - JS/BOARD.JS (Índex de blocs)
  * [1] Estat del mòdul i helpers d'ordenació dins cada caixa
- * [2] Muntatge de la vista i filtres ràpids de família
+ * [2] Muntatge de la vista i píndoles ràpides del nucli de casa
  * [3] Renderitzat del Mapa per Persona i mini-targetes
  * ========================================================================== */
 
 import { core } from './core.js';
+
+const CASA_ALL_TOKEN = '__CASA_ALL__';
 
 export const boardView = {
     sectionId: 'boardViewSection',
@@ -42,7 +44,7 @@ export const boardView = {
         });
     },
 
-    /* --- [2] MUNTATGE DE LA VISTA I FILTRES RÀPIDS DE FAMÍLIA --- */
+    /* --- [2] MUNTATGE DE LA VISTA I PÍNDOLES RÀPIDES DEL NUCLI DE CASA --- */
     mount: () => {
         const sec = document.getElementById(boardView.sectionId);
         if (!sec) return;
@@ -58,8 +60,8 @@ export const boardView = {
                     <option value="Idea">💡 Només Idees</option>
                     <option value="pending">⏳ Pendents nostres de comprar/tenir</option>
                 </select>
-                <select id="boardPersonSelect" onchange="app.views.board.render()">
-                    <option value="all">👤 Totes les persones</option>
+                <select id="boardPersonSelect" onchange="app.views.board.onControlChange()">
+                    <option value="all">👤 Qualsevol altra persona</option>
                 </select>
                 <div class="list-sort-box" style="margin-top:0;">
                     <label for="boardSortSelect" class="toolbar-mini-label">↕️ Ordre:</label>
@@ -74,7 +76,10 @@ export const boardView = {
                     <input type="checkbox" id="boardHideEmpty" onchange="app.views.board.render()">
                     Amagar buides
                 </label>
-                <div id="boardFamilyPills" class="filter-pills-row" style="width:100%; padding-top:6px; border-top:1px dashed #ece5d8;"></div>
+                <div class="board-pills-bar">
+                    <div id="boardFamilyPills" class="filter-pills-row"></div>
+                    <button type="button" id="boardClearFiltersBtn" class="clear-filters-btn hidden" onclick="app.views.board.clearFilters()">✕ Netejar</button>
+                </div>
             </div>
 
             <div id="personBoardContainer"></div>
@@ -97,7 +102,7 @@ export const boardView = {
         const pSel = document.getElementById('boardPersonSelect');
         if (pSel) {
             const prevP = pSel.value;
-            pSel.innerHTML = '<option value="all">👤 Totes les persones</option>';
+            pSel.innerHTML = '<option value="all">👤 Qualsevol altra persona</option>';
             const tree = {
                 "Casa": cfg.casaMembers,
                 [cfg.dir1Name]: cfg.dir1Members,
@@ -120,10 +125,23 @@ export const boardView = {
         boardView.renderFamilyPills();
     },
 
-    togglePersonPill: (personName) => {
-        const idx = boardView.selectedPeople.indexOf(personName);
+    togglePersonPill: (token) => {
+        const idx = boardView.selectedPeople.indexOf(token);
         if (idx > -1) boardView.selectedPeople.splice(idx, 1);
-        else boardView.selectedPeople.push(personName);
+        else boardView.selectedPeople.push(token);
+        boardView.renderFamilyPills();
+        boardView.render();
+    },
+
+    onControlChange: () => {
+        boardView.renderFamilyPills();
+        boardView.render();
+    },
+
+    clearFilters: () => {
+        boardView.selectedPeople = [];
+        const pSel = document.getElementById('boardPersonSelect');
+        if (pSel) pSel.value = 'all';
         boardView.renderFamilyPills();
         boardView.render();
     },
@@ -131,21 +149,39 @@ export const boardView = {
     renderFamilyPills: () => {
         const pillsCont = document.getElementById('boardFamilyPills');
         if (!pillsCont) return;
+
         const cfg = core.getConfig();
-        const quickFamily = [...cfg.casaMembers, ...cfg.dir1Members, ...cfg.dir2Members];
-        boardView.selectedPeople = boardView.selectedPeople.filter(p => quickFamily.includes(p));
+        const casaMembers = cfg.casaMembers || [];
+        boardView.selectedPeople = boardView.selectedPeople.filter(
+            p => p === CASA_ALL_TOKEN || casaMembers.includes(p)
+        );
 
         pillsCont.innerHTML = '';
-        quickFamily.forEach(personName => {
+        casaMembers.forEach(personName => {
             const isActive = boardView.selectedPeople.includes(personName);
-            const label = /\(gos/i.test(personName) ? `🐶 ${personName.replace(/\s*\(gos.*?\)/i, '')}` : personName;
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = `filter-pill fam-pill ${isActive ? 'active' : ''}`;
-            btn.innerText = label;
+            btn.innerText = personName;
             btn.onclick = () => boardView.togglePersonPill(personName);
             pillsCont.appendChild(btn);
         });
+
+        if (casaMembers.length > 1) {
+            const isAllActive = boardView.selectedPeople.includes(CASA_ALL_TOKEN);
+            const allBtn = document.createElement('button');
+            allBtn.type = 'button';
+            allBtn.className = `filter-pill fam-pill fam-all-pill ${isAllActive ? 'active' : ''}`;
+            allBtn.innerText = `🏠 Tots ${casaMembers.length}`;
+            allBtn.onclick = () => boardView.togglePersonPill(CASA_ALL_TOKEN);
+            pillsCont.appendChild(allBtn);
+        }
+
+        const personSel = document.getElementById('boardPersonSelect')?.value || 'all';
+        const clearBtn = document.getElementById('boardClearFiltersBtn');
+        if (clearBtn) {
+            clearBtn.classList.toggle('hidden', boardView.selectedPeople.length === 0 && personSel === 'all');
+        }
     },
 
     onSortChange: (val) => {
@@ -165,9 +201,10 @@ export const boardView = {
         const personSel = document.getElementById('boardPersonSelect')?.value || 'all';
         const hideEmpty = Boolean(document.getElementById('boardHideEmpty')?.checked);
 
-        const activePersonSet = new Set(boardView.selectedPeople);
+        const activePersonSet = new Set(boardView.selectedPeople.filter(p => p !== CASA_ALL_TOKEN));
+        const showCasaAllSelected = boardView.selectedPeople.includes(CASA_ALL_TOKEN);
         if (personSel !== 'all') activePersonSet.add(personSel);
-        const hasPersonFilter = activePersonSet.size > 0;
+        const hasPersonFilter = activePersonSet.size > 0 || showCasaAllSelected;
 
         const filteredGifts = core.data.gifts.filter(g => {
             if ((g.type || 'gift') !== 'gift') return false;
@@ -197,7 +234,8 @@ export const boardView = {
             const r = g.recipients || (g.recipient ? [g.recipient] : []);
             return isGiftForCasa4(r);
         });
-        if (!hasPersonFilter && (!hideEmpty || casa4Gifts.length > 0)) {
+        const shouldShowCasa4 = !hasPersonFilter || showCasaAllSelected;
+        if (shouldShowCasa4 && (!hideEmpty || casa4Gifts.length > 0)) {
             casaHtml += boardView.buildPersonBoxHtml(`🏠 Casa / Els ${casaFour.length}`, casa4Gifts, "casa-box", "casa4", null, false);
         }
 
@@ -224,20 +262,27 @@ export const boardView = {
         }
 
         // 3. SECCIÓ ALTRES FAMILIARS
+        const ext1Selected = cfg.ext1Members.some(m => activePersonSet.has(m));
+        const ext2Selected = cfg.ext2Members.some(m => activePersonSet.has(m));
+
         const ext1Gifts = filteredGifts.filter(g => {
             const r = g.recipients || (g.recipient ? [g.recipient] : []);
-            return r.some(p => cfg.ext1Members.includes(p));
+            return ext1Selected
+                ? r.some(p => activePersonSet.has(p) && cfg.ext1Members.includes(p))
+                : r.some(p => cfg.ext1Members.includes(p));
         });
         const ext2Gifts = filteredGifts.filter(g => {
             const r = g.recipients || (g.recipient ? [g.recipient] : []);
-            return r.some(p => cfg.ext2Members.includes(p));
+            return ext2Selected
+                ? r.some(p => activePersonSet.has(p) && cfg.ext2Members.includes(p))
+                : r.some(p => cfg.ext2Members.includes(p));
         });
 
         let altresHtml = '';
-        if (!hasPersonFilter && (!hideEmpty || ext1Gifts.length > 0)) {
+        if ((!hasPersonFilter || ext1Selected) && (!hideEmpty || ext1Gifts.length > 0)) {
             altresHtml += boardView.buildPersonBoxHtml(`🌿 ${cfg.ext1Name}`, ext1Gifts, "altres-box", "group", null, true);
         }
-        if (!hasPersonFilter && (!hideEmpty || ext2Gifts.length > 0)) {
+        if ((!hasPersonFilter || ext2Selected) && (!hideEmpty || ext2Gifts.length > 0)) {
             altresHtml += boardView.buildPersonBoxHtml(`🌿 ${cfg.ext2Name}`, ext2Gifts, "altres-box", "group", null, true);
         }
 
