@@ -1819,19 +1819,52 @@ export const core = {
         `;
     },
 
+    getLimitDeltaMeta: (limitVal, lyVal) => {
+        if (!limitVal || limitVal <= 0) return { text: '', cls: '', inputCls: '' };
+        if (!lyVal || lyVal <= 0) return { text: 'Nou', cls: 'is-new', inputCls: '' };
+
+        const diff = limitVal - lyVal;
+        if (Math.abs(diff) < 0.01) {
+            return { text: '= Igual', cls: 'is-same', inputCls: 'is-same' };
+        }
+        const pct = Math.round((diff / lyVal) * 100);
+        const pctStr = pct !== 0 ? ` (${diff > 0 ? '+' : ''}${pct}%)` : '';
+        if (diff > 0) {
+            return {
+                text: `▲ +${core.formatMoney(diff)}${pctStr}`,
+                cls: 'is-higher',
+                inputCls: 'is-higher'
+            };
+        }
+        return {
+            text: `▼ -${core.formatMoney(Math.abs(diff))}${pctStr}`,
+            cls: 'is-lower',
+            inputCls: 'is-lower'
+        };
+    },
+
     renderEconInputsTab: (mode) => {
-        const { blocks } = core.computeEconomicTree();
+        const { blocks, totals } = core.computeEconomicTree();
         const contId = mode === 'limits' ? 'budgetInputsContainer' : 'lastYearInputsContainer';
         const container = document.getElementById(contId);
         if (!container) return;
 
-        const store = mode === 'limits' ? (core.data.budgets || {}) : (core.data.lastYear || {});
-        const labelTitle = mode === 'limits' ? 'Total Límits Enguany' : 'Total Any Passat';
+        const isLimits = (mode === 'limits');
+        const store = isLimits ? (core.data.budgets || {}) : (core.data.lastYear || {});
+        const labelTitle = isLimits ? 'Total Límits Enguany' : 'Total Any Passat';
 
         let html = `
             <div class="econ-total-live-bar">
-                <span>${labelTitle}:</span>
-                <b id="econGrandTotal_${mode}">0,00 €</b>
+                <div class="econ-bar-main">
+                    <span>${labelTitle}:</span>
+                    <b id="econGrandTotal_${mode}" data-grand-ly="${totals.lastYear}">0,00 €</b>
+                </div>
+                ${isLimits && totals.lastYear > 0 ? `
+                    <div class="econ-bar-sub">
+                        <span>📅 Any passat: ${core.formatMoney(totals.lastYear)}</span>
+                        <span id="econGrandDiff_${mode}" class="econ-bar-delta"></span>
+                    </div>
+                ` : ''}
             </div>
         `;
 
@@ -1845,16 +1878,24 @@ export const core = {
                 const hint = b.id === 'altres'
                     ? 'Amics, detalls puntuals o sense assignar'
                     : 'Import global del bloc (absorbeix amic invisible rotatiu)';
+                const refHtml = isLimits
+                    ? `<div class="econ-ref-line">
+                            <span class="econ-ref-ly">📅 Any passat: ${b.lastYear > 0 ? core.formatMoney(b.lastYear) : '—'}</span>
+                            <span class="econ-ref-delta"></span>
+                       </div>`
+                    : '';
 
                 html += `
                     <div class="econ-input-block">
                         <div class="econ-input-block-head is-single">
-                            <div>
+                            <div class="econ-row-info">
                                 <div class="econ-input-block-title">${b.icon} ${core.escapeHtml(b.title)}</div>
                                 <div class="cfg-hint">${hint}</div>
+                                ${refHtml}
                             </div>
                             <input type="text" inputmode="decimal" class="econ-num-input"
                                 data-econ-mode="${mode}" data-econ-block="${b.id}" data-econ-key="${safeKey}"
+                                data-last-year="${b.lastYear}"
                                 value="${displayVal}" placeholder="0 €"
                                 oninput="app.recalcEconInputSubtotals('${mode}')">
                         </div>
@@ -1866,8 +1907,14 @@ export const core = {
             html += `
                 <div class="econ-input-block">
                     <div class="econ-input-block-head">
-                        <span class="econ-input-block-title">${b.icon} ${core.escapeHtml(b.title)}</span>
-                        <span class="econ-input-subtotal" id="econSub_${mode}_${b.id}">0,00 €</span>
+                        <div>
+                            <span class="econ-input-block-title">${b.icon} ${core.escapeHtml(b.title)}</span>
+                            ${isLimits && b.lastYear > 0 ? `<div class="econ-head-ly">📅 Any passat: ${core.formatMoney(b.lastYear)}</div>` : ''}
+                        </div>
+                        <div class="econ-head-right">
+                            <span class="econ-input-subtotal" id="econSub_${mode}_${b.id}" data-block-ly="${b.lastYear}">0,00 €</span>
+                            ${isLimits ? `<span class="econ-ref-delta" id="econSubDiff_${mode}_${b.id}"></span>` : ''}
+                        </div>
                     </div>
                     <div class="econ-input-rows">
             `;
@@ -1877,11 +1924,22 @@ export const core = {
                 const rawVal = core.getStoredEconVal(store, c.key, fallbacks);
                 const displayVal = rawVal > 0 ? String(rawVal).replace('.', ',') : '';
                 const safeKey = core.escapeHtml(c.key);
+                const refHtml = isLimits
+                    ? `<div class="econ-ref-line">
+                            <span class="econ-ref-ly">📅 ${c.lastYear > 0 ? core.formatMoney(c.lastYear) : '0,00 €'}</span>
+                            <span class="econ-ref-delta"></span>
+                       </div>`
+                    : '';
+
                 html += `
                     <div class="budget-row">
-                        <span>${core.escapeHtml(c.label)}</span>
+                        <div class="econ-row-info">
+                            <span class="econ-row-label">${core.escapeHtml(c.label)}</span>
+                            ${refHtml}
+                        </div>
                         <input type="text" inputmode="decimal" class="econ-num-input"
                             data-econ-mode="${mode}" data-econ-block="${b.id}" data-econ-key="${safeKey}"
+                            data-last-year="${c.lastYear}"
                             value="${displayVal}" placeholder="0 €"
                             oninput="app.recalcEconInputSubtotals('${mode}')">
                     </div>
@@ -1896,6 +1954,7 @@ export const core = {
     },
 
     recalcEconInputSubtotals: (mode) => {
+        const isLimits = (mode === 'limits');
         const inputs = document.querySelectorAll(`input[data-econ-mode="${mode}"]`);
         const blockSums = {};
         let grandTotal = 0;
@@ -1906,15 +1965,51 @@ export const core = {
             const blk = inp.dataset.econBlock;
             blockSums[blk] = (blockSums[blk] || 0) + val;
             grandTotal += val;
+
+            if (isLimits) {
+                const ly = parseFloat(inp.dataset.lastYear) || 0;
+                const meta = core.getLimitDeltaMeta(val, ly);
+                inp.classList.remove('is-higher', 'is-lower', 'is-same');
+                if (meta.inputCls) inp.classList.add(meta.inputCls);
+
+                const row = inp.closest('.budget-row, .econ-input-block-head');
+                const deltaEl = row ? row.querySelector('.econ-ref-delta') : null;
+                if (deltaEl) {
+                    deltaEl.innerText = meta.text;
+                    deltaEl.className = `econ-ref-delta ${meta.cls}`.trim();
+                }
+            }
         });
 
         Object.entries(blockSums).forEach(([blk, sum]) => {
             const el = document.getElementById(`econSub_${mode}_${blk}`);
-            if (el) el.innerText = core.formatMoney(sum);
+            if (el) {
+                el.innerText = core.formatMoney(sum);
+                if (isLimits) {
+                    const bLy = parseFloat(el.dataset.blockLy) || 0;
+                    const meta = core.getLimitDeltaMeta(sum, bLy);
+                    const diffEl = document.getElementById(`econSubDiff_${mode}_${blk}`);
+                    if (diffEl) {
+                        diffEl.innerText = meta.text;
+                        diffEl.className = `econ-ref-delta ${meta.cls}`.trim();
+                    }
+                }
+            }
         });
 
         const totalEl = document.getElementById(`econGrandTotal_${mode}`);
-        if (totalEl) totalEl.innerText = core.formatMoney(grandTotal);
+        if (totalEl) {
+            totalEl.innerText = core.formatMoney(grandTotal);
+            if (isLimits) {
+                const gLy = parseFloat(totalEl.dataset.grandLy) || 0;
+                const meta = core.getLimitDeltaMeta(grandTotal, gLy);
+                const gDiffEl = document.getElementById(`econGrandDiff_${mode}`);
+                if (gDiffEl) {
+                    gDiffEl.innerText = meta.text;
+                    gDiffEl.className = `econ-bar-delta ${meta.cls}`.trim();
+                }
+            }
+        }
     },
 
     saveBudgets: (closeAfter = false) => {
@@ -1945,6 +2040,7 @@ export const core = {
         core.data.lastYear = next;
         core.saveLocal();
         core.renderEconInputsTab('lastYear');
+        core.renderEconInputsTab('limits');
         core.renderRatiosTab();
         if (closeAfter) core.closeModal('budgetsModal');
         else core.switchBudgetTab('ratios');
