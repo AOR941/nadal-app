@@ -906,3 +906,265 @@ header h2 { font-size: 1.25em; margin-top: 2px; }
 
 .cfg-label { display: block; margin-top: 12px; font-weight: bold; font-size: 0.88em; color: #333; }
 .cfg-hint { font-size: 0.78em; color: #666; margin-top: 2px; }
+
+/* Categories de despeses on-the-fly */
+.expense-cat-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 8px;
+}
+.expense-cat-row select { flex: 1; margin-top: 0; }
+.add-cat-btn {
+    width: auto;
+    margin-top: 0;
+    padding: 11px 14px;
+    background: var(--c-green);
+    color: #fff;
+    font-size: 0.88em;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Control Econòmic jeràrquic (3 nivells) */
+.econ-summary-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+.econ-secret-note {
+    background: #f4e8fb;
+    color: #6c3483;
+    border-left: 3px solid #8e44ad;
+    padding: 6px 9px;
+    border-radius: 6px;
+    font-size: 0.8em;
+    margin-top: 8px;
+}
+.econ-expand-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+}
+.econ-muted { color: #7f8c8d; }
+
+.econ-block-card {
+    background: #ffffff;
+    border: 1px solid #e4ddd0;
+    border-left: 4px solid var(--c-green);
+    border-radius: 10px;
+    padding: 11px 12px;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+.econ-block-card.is-open {
+    border-color: #cfc4b0;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.07);
+}
+.econ-block-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+}
+.econ-block-title-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.econ-caret {
+    display: inline-block;
+    width: 14px;
+    text-align: center;
+    font-size: 0.95em;
+    color: #666;
+}
+.econ-block-title { font-weight: 700; font-size: 0.96em; color: #222; }
+.econ-tag-pill {
+    font-size: 0.7em;
+    background: #eef2f7;
+    color: #4a607a;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-weight: 600;
+}
+.econ-count-badge {
+    font-size: 0.72em;
+    background: #f2eee6;
+    color: #555;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-weight: 700;
+}
+.econ-count-badge.sm { font-size: 0.7em; padding: 1px 6px; }
+.econ-block-amount { font-size: 0.94em; text-align: right; white-space: nowrap; }
+.econ-limit-sub { font-size: 0.8em; color: #666; font-weight: normal; margin-left: 3px; }
+.econ-planned-tag {
+    font-size: 0.88em;
+    color: #b9770e;
+    background: #fef9e7;
+    padding: 1px 6px;
+    border-radius: 6px;
+    font-weight: 600;
+}
+
+/* Nivell 2: Persones i subcategories */
+.econ-children-list {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px dashed #e2dacb;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+.econ-empty-sub { font-size: 0.82em; color: #888; font-style: italic; padding: 6px 4px; }
+
+.econ-child-card {
+    background: #faf8f4;
+    border: 1px solid #ece5d8;
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+.econ-child-card.is-open { background: #ffffff; border-color: #d5cbb8; }
+.econ-child-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.econ-child-header.clickable { cursor: pointer; user-select: none; }
+.econ-child-left { display: flex; align-items: center; gap: 5px; }
+.econ-caret-sm {
+    display: inline-block;
+    width: 12px;
+    text-align: center;
+    font-size: 0.85em;
+    color: #777;
+}
+.econ-child-name { font-weight: 600; font-size: 0.9em; color: #2c3e50; }
+.econ-child-right { font-size: 0.88em; white-space: nowrap; }
+.ratio-bar-bg.slim { height: 5px; margin: 5px 0 4px 0; }
+.econ-child-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    font-size: 0.76em;
+    color: #666;
+    margin-top: 3px;
+}
+
+/* Nivell 3: Detall granular de regals i despeses */
+.econ-items-list {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid #eee8dc;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.econ-items-divider {
+    font-size: 0.72em;
+    font-weight: 700;
+    color: #b9770e;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin: 6px 0 2px 0;
+}
+.econ-item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: #f8f9fa;
+    font-size: 0.82em;
+    cursor: pointer;
+    transition: background-color 0.12s ease;
+}
+.econ-item-row:hover { background: #eef6f0; }
+.econ-item-row.is-planned {
+    background: #fffcf2;
+    border: 1px dashed #f5d68a;
+    color: #666;
+}
+.econ-item-main {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+}
+.econ-item-title { line-height: 1.3; word-break: break-word; }
+.econ-split-pill {
+    font-size: 0.82em;
+    background: #e8f8f5;
+    color: #0e6251;
+    border: 1px solid #a3e4d7;
+    padding: 1px 5px;
+    border-radius: 6px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+.econ-item-price { font-weight: 700; color: #333; white-space: nowrap; flex-shrink: 0; }
+
+/* Formularis de Límits Enguany i Any Passat amb subtotals en directe */
+.econ-total-live-bar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--c-green-dark);
+    color: #fff;
+    padding: 10px 12px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.95em;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+}
+.econ-input-block {
+    background: #fff;
+    border: 1px solid #e4ddd0;
+    border-radius: 10px;
+    margin-bottom: 12px;
+    overflow: hidden;
+}
+.econ-input-block-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    background: #f7f4ed;
+    border-bottom: 1px solid #e6dfd1;
+}
+.econ-input-block-head.is-single {
+    background: #fff;
+    border-bottom: none;
+    padding: 11px 12px;
+}
+.econ-input-block-title { font-weight: 700; font-size: 0.92em; color: #222; }
+.econ-input-subtotal { font-weight: 700; font-size: 0.9em; color: var(--c-green-dark); white-space: nowrap; }
+.econ-input-rows { padding: 6px 12px 2px 12px; }
+.econ-input-rows .budget-row:last-child { border-bottom: none; margin-bottom: 2px; }
+.econ-num-input {
+    width: 96px !important;
+    margin: 0 !important;
+    padding: 7px 8px !important;
+    text-align: right;
+    font-size: 0.92em;
+    background: #faf8f4;
+    flex-shrink: 0;
+}
