@@ -1,53 +1,83 @@
 /* ==========================================================================
  * NADAL TRACKER - JS/CORE.JS (Índex de blocs)
- * [1] Configuració per defecte i estat global
- * [2] Helpers d'esdeveniments, rondes, pressupostos i Base64/UTF-8
- * [3] Criptografia Top Secret (UTF-8 + fallback Latin-1)
- * [4] Migració de dades antigues i fusió en cas de conflicte
- * [5] Sincronització amb GitHub REST API i cua offline
- * [6] Inici, persistència local i configuració (Núvol / Família)
- * [7] Navegació entre vistes, modals, teclat i swipe-down refresh
- * [8] Càlcul econòmic, pressupostos, any passat i compartir WhatsApp
- * [9] Formulari de regals/despeses (deliveryDate + regals conjunts)
+ * [1] Constants globals, categories per defecte i estat del nucli
+ * [2] Helpers de configuració, migració, esdeveniments i criptografia
+ * [3] Persistència local, Cookie de suport i sincronització amb GitHub
+ * [4] Motor econòmic jeràrquic (3 nivells) i modal de Control Econòmic
+ * [5] Formulari de Regals / Despeses (incl. categories on-the-fly)
+ * [6] Sessió PIN (Top Secret), Configuració i Compartir per WhatsApp
+ * [7] Navegació entre pestanyes, PWA, smart-sticky i arrencada
  * ========================================================================== */
 
-/* --- [1] CONFIGURACIÓ PER DEFECTE I ESTAT GLOBAL --- */
-export const DEFAULT_FAMILY_CONFIG = {
-    parents: ["Mare", "Pare"],
-    casaMembers: ["Fill/a 1", "Fill/a 2", "Mare", "Pare"],
-    dir1Name: "Família 1",
-    dir1Members: ["Avi 1", "Àvia 1"],
-    dir2Name: "Família 2",
-    dir2Members: ["Avi 2", "Àvia 2"],
-    ext1Name: "Família Extensa 1",
-    ext1Members: ["Tiet/a 1"],
-    ext2Name: "Família Extensa 2",
-    ext2Members: ["Tiet/a 2"],
-    bigTioName: "🪵 Tió Família",
-    rounds: ["Ronda 1", "Ronda 2"]
+export const STATE_PROGRESS_ORDER = [
+    'Idea',
+    'Decidit',
+    'Comprat/Delivery',
+    'El tenim',
+    'Embolicat',
+    'Confirmat'
+];
+
+export const DEFAULT_EXPENSE_CATEGORIES = [
+    '🍲 Dinar de Santa Llúcia',
+    "🗓️ Calendari d'Advent",
+    '🍽️ Àpats i Begudes',
+    '✨ Decoració i Tradicions',
+    '📦 Logística i Preparatius',
+    '✉️ Postals de Nadal',
+    '🎉 Altres despeses nadalenques'
+];
+
+const LEGACY_EXPENSE_CAT_MAP = {
+    '✨ Decoració i Arbre': '✨ Decoració i Tradicions',
+    '🪵 Tradicions (Tió, Reis, Pessebre)': '✨ Decoració i Tradicions'
 };
 
-export const ALL_MODAL_IDS = ['giftModal', 'budgetsModal', 'configModal', 'shareModal', 'unlockModal', 'adventModal'];
+const DEFAULT_CONFIG = {
+    parents: ['Adult 1', 'Adult 2'],
+    casaMembers: ['Fill/a 1', 'Fill/a 2', 'Adult 1', 'Adult 2'],
+    dir1Name: 'Família 1',
+    dir1Members: [],
+    dir2Name: 'Família 2',
+    dir2Members: [],
+    ext1Name: 'Família Extensa 1',
+    ext1Members: [],
+    ext2Name: 'Família Extensa 2',
+    ext2Members: [],
+    bigTioName: '🪵 Tió Família',
+    rounds: ['Ronda 1', 'Ronda 2'],
+    expenseCategories: [...DEFAULT_EXPENSE_CATEGORIES]
+};
 
-export const EVENT_CHRONOLOGICAL_ORDER = [
-    "🎄 Tió Casa",
-    "🪵 Tió Família",
-    "🎅 Pare Noel",
-    "👑 Reis",
-    "✨ General Festes",
-    "❓ Per decidir"
-];
-
-export const STATE_PROGRESS_ORDER = [
-    "Idea",
-    "Decidit",
-    "Comprat/Delivery",
-    "El tenim",
-    "Embolicat",
-    "Confirmat"
-];
+const SPENT_GIFT_STATES = ['Comprat/Delivery', 'El tenim', 'Embolicat'];
+const PLANNED_GIFT_STATES = ['Idea', 'Decidit'];
+const SPECIAL_FROM_TOKENS = ['Nosaltres', 'Casa', 'Tió', 'Pare Noel', 'Reis Mags'];
 
 export const core = {
+    /* --- [1] CONSTANTS GLOBALS I ESTAT DEL NUCLI --- */
+    allGiftStates: [
+        { value: 'Idea', label: '💡 Idea' },
+        { value: 'Decidit', label: '🎯 Decidit' },
+        { value: 'Comprat/Delivery', label: '🚚 Comprat/Delivery' },
+        { value: 'El tenim', label: '✅ El tenim' },
+        { value: 'Embolicat', label: '🎁 Embolicat' },
+        { value: 'Confirmat', label: '🏡 Confirmat' }
+    ],
+
+    views: {},
+    activeMainView: 'list',
+    currentUser: null,
+    currentPin: null,
+    isDuplicating: false,
+    econExpanded: {},
+
+    ghConfig: { owner: '', repo: '', path: 'dades.json', token: '' },
+    ghSha: null,
+    ghEtag: null,
+    isSyncing: false,
+    pollTimer: null,
+    pushTimer: null,
+
     data: {
         gifts: [],
         deletedIds: [],
@@ -56,46 +86,123 @@ export const core = {
         budgets: {},
         lastYear: {},
         pins: {},
-        config: null,
-        lastUpdate: 'Mai'
+        config: JSON.parse(JSON.stringify(DEFAULT_CONFIG)),
+        lastUpdate: ''
     },
-    ghConfig: { owner: '', repo: 'nadal-dades', path: 'dades.json', token: '' },
-    ghSha: null,
-    ghEtag: null,
-    isSyncing: false,
-    queuedPush: false,
-    pollTimer: null,
 
-    currentUser: null,
-    pin: null,
-    activeMainView: 'list',
-    activeBudgetTab: 'ratios',
-    activeConfigTab: 'github',
+    /* --- [2] HELPERS DE CONFIGURACIÓ, MIGRACIÓ, ESDEVENIMENTS I CRIPTOGRAFIA --- */
+    escapeHtml: (str) => String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;'),
 
-    // Referència als controladors de pestanyes (registrats a main.js)
-    views: {},
+    formatMoney: (val) => {
+        const n = Number(val) || 0;
+        return n.toLocaleString('ca-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+    },
 
-    allGiftStates: [
-        { value: 'Idea', label: '💡 Idea' },
-        { value: 'Decidit', label: '🎯 Decidit' },
-        { value: 'Comprat/Delivery', label: '🚚 Comprat/Delivery' },
-        { value: 'El tenim', label: '✅ El tenim' },
-        { value: 'Embolicat', label: '🎀 Embolicat' },
-        { value: 'Confirmat', label: '🤝 Confirmat' }
-    ],
+    formatMemberLabel: (name) => {
+        if (!name) return '';
+        return /\(gos/i.test(name)
+            ? `🐶 ${name.replace(/\s*\(gos.*?\)/i, '').trim()}`
+            : name;
+    },
 
-    expenseCategories: [
-        "🍲 Dinar de Santa Llúcia",
-        "🗓️ Calendari d'Advent",
-        "🍽️ Àpats i Begudes",
-        "✨ Decoració i Arbre",
-        "🪵 Tradicions (Tió, Reis, Pessebre)",
-        "✉️ Postals de Nadal",
-        "🎉 Altres despeses nadalenques"
-    ],
+    parseCommaList: (str) => String(str || '')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean),
 
-    /* --- [2] HELPERS D'ESDEVENIMENTS, RONDES, PRESSUPOSTOS I BASE64/UTF-8 --- */
-    getConfig: () => Object.assign({}, DEFAULT_FAMILY_CONFIG, core.data.config || {}),
+    getConfig: () => {
+        const raw = (core.data && core.data.config) ? core.data.config : {};
+        const merged = {
+            parents: Array.isArray(raw.parents) && raw.parents.length ? raw.parents : [...DEFAULT_CONFIG.parents],
+            casaMembers: Array.isArray(raw.casaMembers) && raw.casaMembers.length ? raw.casaMembers : [...DEFAULT_CONFIG.casaMembers],
+            dir1Name: raw.dir1Name || DEFAULT_CONFIG.dir1Name,
+            dir1Members: Array.isArray(raw.dir1Members) ? raw.dir1Members : [],
+            dir2Name: raw.dir2Name || DEFAULT_CONFIG.dir2Name,
+            dir2Members: Array.isArray(raw.dir2Members) ? raw.dir2Members : [],
+            ext1Name: raw.ext1Name || DEFAULT_CONFIG.ext1Name,
+            ext1Members: Array.isArray(raw.ext1Members) ? raw.ext1Members : [],
+            ext2Name: raw.ext2Name || DEFAULT_CONFIG.ext2Name,
+            ext2Members: Array.isArray(raw.ext2Members) ? raw.ext2Members : [],
+            bigTioName: raw.bigTioName || DEFAULT_CONFIG.bigTioName,
+            rounds: Array.isArray(raw.rounds) ? raw.rounds : [...DEFAULT_CONFIG.rounds],
+            expenseCategories: Array.isArray(raw.expenseCategories) && raw.expenseCategories.length
+                ? raw.expenseCategories
+                : [...DEFAULT_EXPENSE_CATEGORIES]
+        };
+        return merged;
+    },
+
+    getExpenseCategories: () => {
+        const cfg = core.getConfig();
+        const set = new Set();
+        cfg.expenseCategories.forEach(c => {
+            const mapped = LEGACY_EXPENSE_CAT_MAP[c] || c;
+            if (mapped && mapped.trim()) set.add(mapped.trim());
+        });
+        // Assegurem que les dues categories vinculades a pestanyes sempre existeixin
+        set.add('🍲 Dinar de Santa Llúcia');
+        set.add("🗓️ Calendari d'Advent");
+        (core.data.gifts || []).forEach(g => {
+            if ((g.type || 'gift') === 'expense' && g.expenseCat) {
+                const mapped = LEGACY_EXPENSE_CAT_MAP[g.expenseCat] || g.expenseCat;
+                if (mapped.trim()) set.add(mapped.trim());
+            }
+        });
+        return Array.from(set);
+    },
+
+    migrateExpenseCategories: () => {
+        let changed = false;
+
+        if (!core.data.config) core.data.config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+        if (!Array.isArray(core.data.config.expenseCategories) || core.data.config.expenseCategories.length === 0) {
+            core.data.config.expenseCategories = [...DEFAULT_EXPENSE_CATEGORIES];
+            changed = true;
+        } else {
+            const cleaned = [];
+            core.data.config.expenseCategories.forEach(cat => {
+                const mapped = LEGACY_EXPENSE_CAT_MAP[cat] || cat;
+                if (mapped !== cat) changed = true;
+                if (mapped && !cleaned.includes(mapped)) cleaned.push(mapped);
+            });
+            if (!cleaned.includes('📦 Logística i Preparatius') && changed) {
+                const idx = cleaned.indexOf('✨ Decoració i Tradicions');
+                if (idx > -1) cleaned.splice(idx + 1, 0, '📦 Logística i Preparatius');
+                else cleaned.push('📦 Logística i Preparatius');
+            }
+            core.data.config.expenseCategories = cleaned;
+        }
+
+        (core.data.gifts || []).forEach(g => {
+            if ((g.type || 'gift') === 'expense' && g.expenseCat && LEGACY_EXPENSE_CAT_MAP[g.expenseCat]) {
+                g.expenseCat = LEGACY_EXPENSE_CAT_MAP[g.expenseCat];
+                changed = true;
+            }
+        });
+
+        ['budgets', 'lastYear'].forEach(storeKey => {
+            const obj = core.data[storeKey];
+            if (!obj || typeof obj !== 'object') return;
+            Object.entries(LEGACY_EXPENSE_CAT_MAP).forEach(([oldCat, newCat]) => {
+                [oldCat, `exp:${oldCat}`].forEach(oldKey => {
+                    if (obj[oldKey] !== undefined && obj[oldKey] !== '') {
+                        const targetKey = `exp:${newCat}`;
+                        const sum = (parseFloat(obj[targetKey]) || 0) + (parseFloat(obj[oldKey]) || 0);
+                        obj[targetKey] = Number(sum.toFixed(2));
+                        delete obj[oldKey];
+                        changed = true;
+                    }
+                });
+            });
+        });
+
+        return changed;
+    },
 
     getKidsList: () => {
         const cfg = core.getConfig();
@@ -104,619 +211,1568 @@ export const core = {
 
     getChristmasYear: () => {
         const now = new Date();
-        return (now.getMonth() === 0 && now.getDate() <= 6) ? now.getFullYear() - 1 : now.getFullYear();
+        return (now.getMonth() === 0 && now.getDate() <= 15) ? now.getFullYear() - 1 : now.getFullYear();
     },
 
     getOrderedEvents: () => {
         const cfg = core.getConfig();
-        return [
-            "🎄 Tió Casa",
-            cfg.bigTioName,
-            "🎅 Pare Noel",
-            "👑 Reis",
-            "✨ General Festes",
-            "❓ Per decidir"
-        ];
+        const base = ['🪵 Tió Casa'];
+        if (cfg.bigTioName) base.push(cfg.bigTioName);
+        base.push('🎅 Pare Noel');
+        base.push('👑 Reis Casa');
+        if (cfg.dir1Name) base.push(`👑 Reis ${cfg.dir1Name}`);
+        if (cfg.dir2Name) base.push(`👑 Reis ${cfg.dir2Name}`);
+
+        const extras = new Set();
+        (core.data.gifts || []).forEach(g => {
+            if (g.event && !base.includes(g.event) && g.event !== '✨ General Festes' && g.event !== '❓ Per decidir') {
+                extras.add(g.event);
+            }
+        });
+
+        return [...base, ...Array.from(extras), '✨ General Festes', '❓ Per decidir'];
     },
 
-    getEventRank: (evName) => {
-        const cfg = core.getConfig();
-        const val = evName || '❓ Per decidir';
-        if (val === '🎄 Tió Casa') return 1;
-        if (val === cfg.bigTioName || val.startsWith('🪵 ')) return 2;
-        if (val === '🎅 Pare Noel') return 3;
-        if (val === '👑 Reis') return 4;
-        if (val === '✨ General Festes') return 5;
-        if (val === '❓ Per decidir') return 6;
-        return 5;
+    getEventRank: (ev) => {
+        const ordered = core.getOrderedEvents();
+        const idx = ordered.indexOf(ev || '❓ Per decidir');
+        return idx === -1 ? ordered.length : idx;
     },
 
     getStateRank: (st) => {
         const idx = STATE_PROGRESS_ORDER.indexOf(st);
-        return idx === -1 ? 99 : idx;
-    },
-
-    getBudgetCategories: () => {
-        const cfg = core.getConfig();
-        const extLabel = `Família Extensa (${cfg.ext1Name} / ${cfg.ext2Name})`;
-        return [
-            ...cfg.casaMembers,
-            cfg.dir1Name,
-            cfg.dir2Name,
-            extLabel,
-            "Altres / Amics",
-            "🎄 Altres Despeses (Àpats, Deco...)"
-        ];
+        return idx === -1 ? STATE_PROGRESS_ORDER.length : idx;
     },
 
     getEventShortBadges: () => {
-        const cfg = core.getConfig();
-        const bigTioIcon = (cfg.bigTioName || "🪵 Tió Família").split(' ')[0];
-        return [
-            { name: "🎄 Tió Casa", icon: "🎄" },
-            { name: cfg.bigTioName, icon: bigTioIcon },
-            { name: "🎅 Pare Noel", icon: "🎅" },
-            { name: "👑 Reis", icon: "👑" },
-            { name: "❓ Per decidir", icon: "❓" }
-        ];
+        return core.getOrderedEvents()
+            .filter(ev => ev !== '✨ General Festes')
+            .map(ev => ({ name: ev, icon: ev.split(' ')[0] || '🎁' }));
     },
 
-    getHouseholdUnitKey: (person) => {
-        const cfg = core.getConfig();
-        if (cfg.casaMembers.includes(person)) return 'casa';
-        if (cfg.dir1Members.includes(person)) return `dir1:${cfg.dir1Name}`;
-        if (cfg.dir2Members.includes(person)) return `dir2:${cfg.dir2Name}`;
-        if (cfg.ext1Members.includes(person)) return `ext1:${cfg.ext1Name}`;
-        if (cfg.ext2Members.includes(person)) return `ext2:${cfg.ext2Name}`;
-        return `other:${person}`;
-    },
-
-    // Retorna les persones d'altres unitats familiars quan el regal és compartit amb casa
-    getJointContributors: (froms, isPaidByUs) => {
-        const cfg = core.getConfig();
-        const list = Array.isArray(froms) ? froms : [];
-        if (list.length <= 1) return [];
-        const hasCasaGiver = isPaidByUs || list.some(p => cfg.casaMembers.includes(p));
-        if (!hasCasaGiver) return [];
-        return list.filter(p => !cfg.casaMembers.includes(p));
-    },
-
-    ghEncodeBase64: (str) => {
-        const bytes = new TextEncoder().encode(str);
-        let bin = '';
-        for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-        return btoa(bin);
-    },
-
-    ghDecodeBase64: (b64) => {
-        const clean = b64.replace(/\s/g, '');
-        const bin = atob(clean);
-        const bytes = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        return new TextDecoder().decode(bytes);
-    },
-
-    /* --- [3] CRIPTOGRAFIA TOP SECRET (UTF-8 + FALLBACK LATIN-1) --- */
-    crypt: (text, key) => {
-        if (!text) return '';
-        const encoder = new TextEncoder();
-        const textBytes = encoder.encode(text);
-        const keyBytes = encoder.encode(key);
-        let bin = '';
+    /* --- Criptografia client-side XOR UTF-8 (amb fallback Latin-1) --- */
+    encryptSecret: (plainText, pin) => {
+        if (!plainText) return '';
+        const keyBytes = new TextEncoder().encode(String(pin || '0000'));
+        const textBytes = new TextEncoder().encode(String(plainText));
+        const out = new Uint8Array(textBytes.length);
         for (let i = 0; i < textBytes.length; i++) {
-            bin += String.fromCharCode(textBytes[i] ^ keyBytes[i % keyBytes.length]);
+            out[i] = textBytes[i] ^ keyBytes[i % keyBytes.length];
         }
-        return btoa(bin);
+        let bin = '';
+        out.forEach(b => { bin += String.fromCharCode(b); });
+        return 'u8:' + btoa(bin);
     },
 
-    decrypt: (base64, key) => {
-        if (!base64) return '';
+    decryptSecret: (encoded, pin) => {
+        if (!encoded) return '';
+        const keyStr = String(pin || '0000');
         try {
-            const raw = atob(base64);
-            const cipherBytes = new Uint8Array(raw.length);
-            for (let i = 0; i < raw.length; i++) cipherBytes[i] = raw.charCodeAt(i);
-            const keyBytes = new TextEncoder().encode(key);
-            const plainBytes = new Uint8Array(cipherBytes.length);
-            for (let i = 0; i < cipherBytes.length; i++) {
-                plainBytes[i] = cipherBytes[i] ^ keyBytes[i % keyBytes.length];
-            }
-            try {
-                return new TextDecoder('utf-8', { fatal: true }).decode(plainBytes);
-            } catch (utf8Err) {
-                let res = '';
-                for (let i = 0; i < raw.length; i++) {
-                    res += String.fromCharCode(raw.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+            if (encoded.startsWith('u8:')) {
+                const bin = atob(encoded.slice(3));
+                const bytes = new Uint8Array(bin.length);
+                const keyBytes = new TextEncoder().encode(keyStr);
+                for (let i = 0; i < bin.length; i++) {
+                    bytes[i] = bin.charCodeAt(i) ^ keyBytes[i % keyBytes.length];
                 }
-                return res;
+                return new TextDecoder().decode(bytes);
             }
-        } catch (e) { return ''; }
-    },
-
-    /* --- [4] MIGRACIÓ DE DADES ANTIGUES I FUSIÓ EN CAS DE CONFLICTE --- */
-    inferConfigFromLegacyData: (imported) => {
-        const cfg = JSON.parse(JSON.stringify(DEFAULT_FAMILY_CONFIG));
-        const pinUsers = Object.keys(imported.pins || {});
-        if (pinUsers.length >= 2) cfg.parents = pinUsers.slice(0, 2);
-
-        const budgetKeys = Object.keys(imported.budgets || {});
-        const knownCasa = budgetKeys.filter(k => !k.startsWith('Família') && !k.startsWith('Altres') && !k.startsWith('🎄'));
-        if (knownCasa.length >= 2) cfg.casaMembers = knownCasa;
-
-        const foundRounds = new Set();
-        let foundBigTio = null;
-        const allPeople = new Set();
-
-        (imported.gifts || []).forEach(g => {
-            if (g.round) foundRounds.add(g.round);
-            if (g.event && g.event.startsWith('🪵 ')) foundBigTio = g.event;
-            (g.recipients || []).forEach(p => {
-                if (!['Tió', 'Reis Mags', 'Amics/Altres'].includes(p)) allPeople.add(p);
-            });
-        });
-
-        if (foundBigTio) cfg.bigTioName = foundBigTio;
-        if (foundRounds.size > 0) cfg.rounds = Array.from(foundRounds);
-
-        const others = Array.from(allPeople).filter(p => !cfg.casaMembers.includes(p));
-        if (others.length > 0) {
-            const mid = Math.ceil(others.length / 2);
-            cfg.dir1Name = "Família 1";
-            cfg.dir1Members = others.slice(0, mid);
-            cfg.dir2Name = "Família 2";
-            cfg.dir2Members = others.slice(mid);
+            // Fallback compatibilitat regressiva (Latin-1 antic)
+            const bin = atob(encoded);
+            let res = '';
+            for (let i = 0; i < bin.length; i++) {
+                res += String.fromCharCode(bin.charCodeAt(i) ^ keyStr.charCodeAt(i % keyStr.length));
+            }
+            return res;
+        } catch (e) {
+            return '';
         }
-        return cfg;
     },
 
-    mapPersonToBudgetCat: (person) => {
+    resolveGiftDisplay: (g) => {
         const cfg = core.getConfig();
-        if (cfg.casaMembers.includes(person)) return person;
-        if (cfg.dir1Members.includes(person)) return cfg.dir1Name;
-        if (cfg.dir2Members.includes(person)) return cfg.dir2Name;
-        if (cfg.ext1Members.includes(person) || cfg.ext2Members.includes(person)) {
-            return `Família Extensa (${cfg.ext1Name} / ${cfg.ext2Name})`;
+        const isExpense = (g.type || 'gift') === 'expense';
+        const isSecret = Boolean(g.isSecret) && !isExpense;
+        const canDecrypt = !isSecret || (core.currentUser && core.currentUser === g.createdBy && core.currentPin);
+        const isOthersSecret = isSecret && !canDecrypt;
+
+        const isPaidByUs = isExpense ? true : (g.paidByUs !== false);
+        const isOtherHouse = !isExpense && !isPaidByUs;
+        const isReceivedFromOthers = isOtherHouse || g.state === 'Confirmat';
+
+        const recips = Array.isArray(g.recipients)
+            ? g.recipients.filter(Boolean)
+            : (g.recipient ? [g.recipient] : []);
+        const froms = Array.isArray(g.froms)
+            ? g.froms.filter(Boolean)
+            : (g.from ? [g.from] : []);
+
+        const ownTokens = new Set([...SPECIAL_FROM_TOKENS, ...cfg.casaMembers]);
+        const jointContributors = (!isExpense && isPaidByUs)
+            ? froms.filter(f => !ownTokens.has(f))
+            : [];
+
+        let titleDisplay = g.title || '(Sense títol)';
+        let priceRaw = g.price;
+        let commentsDisplay = g.comments || '';
+        let shopUrl = g.url || '';
+        let imgUrl = g.image || '';
+
+        if (isSecret) {
+            if (isOthersSecret) {
+                titleDisplay = `🕵️‍♂️ Top Secret (de ${g.createdBy || 'Parella'})`;
+                priceRaw = 0;
+                commentsDisplay = '';
+                shopUrl = '';
+                imgUrl = '';
+            } else {
+                titleDisplay = core.decryptSecret(g.title, core.currentPin) || g.title;
+                priceRaw = g.price ? core.decryptSecret(String(g.price), core.currentPin) : '';
+                commentsDisplay = g.comments ? core.decryptSecret(g.comments, core.currentPin) : '';
+                shopUrl = g.url ? core.decryptSecret(g.url, core.currentPin) : '';
+                imgUrl = g.image ? core.decryptSecret(g.image, core.currentPin) : '';
+            }
         }
-        return "Altres / Amics";
-    },
 
-    mergeDataObjects: (remote, local, preferLocalBudgets = false) => {
-        const mergedDeleted = new Set([...(remote.deletedIds || []), ...(local.deletedIds || [])]);
-        const giftsMap = new Map();
-
-        (remote.gifts || []).forEach(g => {
-            if (!mergedDeleted.has(g.id)) giftsMap.set(g.id, g);
-        });
-        (local.gifts || []).forEach(g => {
-            if (mergedDeleted.has(g.id)) return;
-            const existing = giftsMap.get(g.id);
-            if (!existing || (g.updatedAt || 0) >= (existing.updatedAt || 0)) {
-                giftsMap.set(g.id, g);
-            }
-        });
-
-        const mergedAdvent = {};
-        const remoteAdv = remote.advent || {};
-        const localAdv = local.advent || {};
-        for (let d = 1; d <= 24; d++) {
-            const key = String(d);
-            const rItem = remoteAdv[key];
-            const lItem = localAdv[key];
-            if (rItem && lItem) {
-                mergedAdvent[key] = (lItem.updatedAt || 0) >= (rItem.updatedAt || 0) ? lItem : rItem;
-            } else if (lItem) {
-                mergedAdvent[key] = lItem;
-            } else if (rItem) {
-                mergedAdvent[key] = rItem;
-            }
-        }
-
-        const poolMap = new Map();
-        (remote.adventPool || []).forEach(item => {
-            if (item && item.id && !mergedDeleted.has(item.id)) poolMap.set(item.id, item);
-        });
-        (local.adventPool || []).forEach(item => {
-            if (!item || !item.id || mergedDeleted.has(item.id)) return;
-            const existing = poolMap.get(item.id);
-            if (!existing || (item.updatedAt || 0) >= (existing.updatedAt || 0)) {
-                poolMap.set(item.id, item);
-            }
-        });
+        const priceVal = parseFloat(String(priceRaw || '').replace(',', '.')) || 0;
 
         return {
-            gifts: Array.from(giftsMap.values()),
-            deletedIds: Array.from(mergedDeleted),
-            advent: mergedAdvent,
-            adventPool: Array.from(poolMap.values()),
-            budgets: preferLocalBudgets ? Object.assign({}, local.budgets || {}) : Object.assign({}, remote.budgets || {}, local.budgets || {}),
-            lastYear: preferLocalBudgets ? Object.assign({}, local.lastYear || {}) : Object.assign({}, remote.lastYear || {}, local.lastYear || {}),
-            pins: Object.assign({}, remote.pins || {}, local.pins || {}),
-            config: local.config || remote.config || null,
-            lastUpdate: new Date().toLocaleString('ca-ES')
+            isExpense,
+            isSecret,
+            isOthersSecret,
+            isPaidByUs,
+            isOtherHouse,
+            isReceivedFromOthers,
+            recips,
+            froms,
+            jointContributors,
+            titleDisplay,
+            priceVal,
+            commentsDisplay,
+            shopUrl,
+            imgUrl,
+            deliveryDate: g.deliveryDate || ''
         };
     },
 
-    /* --- [5] SINCRONITZACIÓ AMB GITHUB REST API I CUA OFFLINE --- */
-    isGithubConfigured: () => Boolean(core.ghConfig.owner && core.ghConfig.repo && core.ghConfig.token),
-
-    setCloudStatus: (state, text) => {
-        const icons = { local: '⚪', syncing: '🟡', ok: '🟢', error: '🔴' };
-        const shortLabels = { local: 'Local', syncing: 'Sincro...', ok: 'Núvol', error: 'Error' };
-        const icon = icons[state] || '⚪';
-
-        const badge = document.getElementById('cloudStatusBadge');
-        if (badge) badge.innerText = `${icon} ${text}`;
-
-        const dot = document.getElementById('cloudStatusDot');
-        const shortEl = document.getElementById('cloudStatusShort');
-        if (dot) dot.innerText = icon;
-        if (shortEl) shortEl.innerText = shortLabels[state] || 'Local';
+    /* --- [3] PERSISTÈNCIA LOCAL, COOKIE DE SUPORT I SINCRONITZACIÓ AMB GITHUB --- */
+    setCookie: (name, value, days = 365) => {
+        try {
+            const d = new Date();
+            d.setTime(d.getTime() + days * 86400000);
+            document.cookie = `${name}=${encodeURIComponent(value)};expires=${d.toUTCString()};path=/;SameSite=Lax`;
+        } catch (e) {}
     },
 
-    persistGithubConfig: () => {
-        const jsonStr = JSON.stringify(core.ghConfig);
-        try { localStorage.setItem('nadalGithubConfig', jsonStr); } catch (e) {}
-        const encoded = encodeURIComponent(core.ghEncodeBase64(jsonStr));
-        document.cookie = `nadalGhCfg=${encoded}; max-age=31536000; path=/; SameSite=Lax`;
+    getCookie: (name) => {
+        try {
+            const parts = (`; ${document.cookie}`).split(`; ${name}=`);
+            if (parts.length === 2) return decodeURIComponent(parts.pop().split(';').shift());
+        } catch (e) {}
+        return '';
     },
 
     loadGithubConfig: () => {
+        try {
+            let saved = localStorage.getItem('nadalGhConfig');
+            if (!saved) saved = core.getCookie('nadalGhConfig');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                core.ghConfig = {
+                    owner: parsed.owner || '',
+                    repo: parsed.repo || '',
+                    path: parsed.path || 'dades.json',
+                    token: parsed.token || ''
+                };
+            }
+        } catch (e) {}
+    },
+
+    persistGithubConfig: () => {
+        const str = JSON.stringify(core.ghConfig);
+        try { localStorage.setItem('nadalGhConfig', str); } catch (e) {}
+        core.setCookie('nadalGhConfig', str, 365);
+    },
+
+    hasGithubConfig: () => Boolean(core.ghConfig.owner && core.ghConfig.repo && core.ghConfig.token),
+
+    parseMagicLink: () => {
         const hash = window.location.hash || '';
-        if (hash.startsWith('#setup=')) {
-            try {
-                const b64 = decodeURIComponent(hash.slice(7));
-                const parsed = JSON.parse(core.ghDecodeBase64(b64));
-                if (parsed && parsed.owner && parsed.token) {
-                    core.ghConfig = Object.assign({}, core.ghConfig, parsed);
-                    core.persistGithubConfig();
-                    history.replaceState(null, '', window.location.pathname);
-                    return;
-                }
-            } catch (e) {}
+        if (!hash.startsWith('#setup=')) return false;
+        try {
+            const b64 = decodeURIComponent(hash.slice(7));
+            const jsonStr = decodeURIComponent(escape(atob(b64)));
+            const parsed = JSON.parse(jsonStr);
+            if (parsed.owner && parsed.repo && parsed.token) {
+                core.ghConfig = {
+                    owner: parsed.owner,
+                    repo: parsed.repo,
+                    path: parsed.path || 'dades.json',
+                    token: parsed.token
+                };
+                core.persistGithubConfig();
+                history.replaceState(null, '', window.location.pathname + window.location.search);
+                return true;
+            }
+        } catch (e) {
+            console.warn('Error llegint enllaç màgic:', e);
         }
-
-        const raw = localStorage.getItem('nadalGithubConfig');
-        if (raw) {
-            try {
-                core.ghConfig = Object.assign({}, core.ghConfig, JSON.parse(raw));
-                return;
-            } catch (e) {}
-        }
-
-        const cookieMatch = document.cookie.match(/(?:^|;\s*)nadalGhCfg=([^;]+)/);
-        if (cookieMatch) {
-            try {
-                const parsed = JSON.parse(core.ghDecodeBase64(decodeURIComponent(cookieMatch[1])));
-                if (parsed && parsed.owner && parsed.token) {
-                    core.ghConfig = Object.assign({}, core.ghConfig, parsed);
-                    try { localStorage.setItem('nadalGithubConfig', JSON.stringify(core.ghConfig)); } catch (e) {}
-                }
-            } catch (e) {}
-        }
+        return false;
     },
 
     copyMagicLink: () => {
-        const cfg = {
-            owner: document.getElementById('ghOwner').value.trim() || core.ghConfig.owner,
-            repo: document.getElementById('ghRepo').value.trim() || core.ghConfig.repo || 'nadal-dades',
-            path: document.getElementById('ghPath').value.trim() || core.ghConfig.path || 'dades.json',
-            token: document.getElementById('ghToken').value.trim() || core.ghConfig.token
-        };
-        if (!cfg.owner || !cfg.token) {
-            return alert("Primer escriu l'usuari i el Token de GitHub!");
+        const owner = document.getElementById('ghOwner').value.trim();
+        const repo = document.getElementById('ghRepo').value.trim();
+        const path = document.getElementById('ghPath').value.trim() || 'dades.json';
+        const token = document.getElementById('ghToken').value.trim();
+        if (!owner || !repo || !token) {
+            alert('Omple primer Usuari, Repositori i Token per generar un Enllaç Màgic.');
+            return;
         }
-        const baseUrl = window.location.origin + window.location.pathname;
-        const payload = encodeURIComponent(core.ghEncodeBase64(JSON.stringify(cfg)));
-        const magicUrl = `${baseUrl}#setup=${payload}`;
-
-        const btn = document.getElementById('btnMagicLink');
-        const markDone = () => {
-            btn.innerText = '✅ Enllaç Màgic copiat!';
-            setTimeout(() => { btn.innerText = '🔗 Copiar Enllaç Màgic (per al mòbil)'; }, 2500);
-        };
+        const payload = JSON.stringify({ owner, repo, path, token });
+        const b64 = btoa(unescape(encodeURIComponent(payload)));
+        const baseUrl = window.location.href.split('#')[0];
+        const link = `${baseUrl}#setup=${encodeURIComponent(b64)}`;
 
         if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(magicUrl).then(markDone).catch(() => prompt("Copia aquest enllaç màgic:", magicUrl));
+            navigator.clipboard.writeText(link).then(() => {
+                alert('🔗 Enllaç Màgic copiat! Obre’l al mòbil (per WhatsApp privat) per configurar el núvol en 1 clic.');
+            });
         } else {
-            prompt("Copia aquest enllaç màgic:", magicUrl);
+            prompt('Copia aquest Enllaç Màgic:', link);
         }
+    },
+
+    loadLocalData: () => {
+        try {
+            const raw = localStorage.getItem('nadalDataV8') || localStorage.getItem('nadalData');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                core.data = Object.assign({
+                    gifts: [],
+                    deletedIds: [],
+                    advent: {},
+                    adventPool: [],
+                    budgets: {},
+                    lastYear: {},
+                    pins: {},
+                    config: JSON.parse(JSON.stringify(DEFAULT_CONFIG)),
+                    lastUpdate: ''
+                }, parsed);
+            }
+        } catch (e) {}
+        core.migrateExpenseCategories();
+    },
+
+    saveLocal: (triggerPush = true) => {
+        core.data.lastUpdate = new Date().toLocaleString('ca-ES', {
+            day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+        });
+        try {
+            const str = JSON.stringify(core.data);
+            localStorage.setItem('nadalDataV8', str);
+            localStorage.setItem('nadalData', str);
+        } catch (e) {}
+
+        const lastEl = document.getElementById('lastSync');
+        if (lastEl) lastEl.innerText = core.data.lastUpdate;
+
+        if (triggerPush && core.hasGithubConfig()) {
+            try { localStorage.setItem('nadalPendingSync', '1'); } catch (e) {}
+            clearTimeout(core.pushTimer);
+            core.pushTimer = setTimeout(() => core.pushToGithub(), 650);
+        }
+    },
+
+    updateCloudBadge: (state, msg) => {
+        const dot = document.getElementById('cloudStatusDot');
+        const shortEl = document.getElementById('cloudStatusShort');
+        const badge = document.getElementById('cloudStatusBadge');
+        if (!dot || !shortEl || !badge) return;
+
+        const map = {
+            local: { dot: '⚪', short: 'Local', full: '⚪ Mode Local (Núvol no configurat)' },
+            syncing: { dot: '🟡', short: 'Sync...', full: '🟡 Sincronitzant amb GitHub...' },
+            ok: { dot: '🟢', short: 'Núvol', full: '🟢 Connectat i sincronitzat' },
+            offline: { dot: '🟠', short: 'Pendent', full: '🟠 Canvis locals pendents de pujar' },
+            error: { dot: '🔴', short: 'Error', full: `🔴 Error de sincronització${msg ? ': ' + msg : ''}` }
+        };
+        const st = map[state] || map.local;
+        dot.innerText = st.dot;
+        shortEl.innerText = st.short;
+        badge.innerText = msg && state !== 'error' ? `${st.dot} ${msg}` : st.full;
+    },
+
+    mergeDataObjects: (localObj, remoteObj) => {
+        const mergedDeleted = Array.from(new Set([
+            ...(localObj.deletedIds || []),
+            ...(remoteObj.deletedIds || [])
+        ]));
+        const delSet = new Set(mergedDeleted);
+
+        const giftMap = new Map();
+        (remoteObj.gifts || []).forEach(g => { if (!delSet.has(g.id)) giftMap.set(g.id, g); });
+        (localObj.gifts || []).forEach(g => {
+            if (delSet.has(g.id)) return;
+            const existing = giftMap.get(g.id);
+            if (!existing || (g.updatedAt || 0) >= (existing.updatedAt || 0)) {
+                giftMap.set(g.id, g);
+            }
+        });
+
+        const mergedAdvent = Object.assign({}, remoteObj.advent || {});
+        Object.entries(localObj.advent || {}).forEach(([day, item]) => {
+            const rem = mergedAdvent[day];
+            if (!rem || (item.updatedAt || 0) >= (rem.updatedAt || 0)) {
+                mergedAdvent[day] = item;
+            }
+        });
+
+        const poolMap = new Map();
+        (remoteObj.adventPool || []).forEach(p => { if (!delSet.has(p.id)) poolMap.set(p.id, p); });
+        (localObj.adventPool || []).forEach(p => {
+            if (delSet.has(p.id)) return;
+            const ex = poolMap.get(p.id);
+            if (!ex || (p.updatedAt || 0) >= (ex.updatedAt || 0)) poolMap.set(p.id, p);
+        });
+
+        return {
+            gifts: Array.from(giftMap.values()),
+            deletedIds: mergedDeleted,
+            advent: mergedAdvent,
+            adventPool: Array.from(poolMap.values()),
+            budgets: Object.assign({}, remoteObj.budgets || {}, localObj.budgets || {}),
+            lastYear: Object.assign({}, remoteObj.lastYear || {}, localObj.lastYear || {}),
+            pins: Object.assign({}, remoteObj.pins || {}, localObj.pins || {}),
+            config: Object.assign(
+                JSON.parse(JSON.stringify(DEFAULT_CONFIG)),
+                remoteObj.config || {},
+                localObj.config || {}
+            ),
+            lastUpdate: localObj.lastUpdate || remoteObj.lastUpdate || ''
+        };
     },
 
     getGithubApiUrl: () => {
-        const owner = encodeURIComponent(core.ghConfig.owner.trim());
-        const repo = encodeURIComponent(core.ghConfig.repo.trim());
-        const path = core.ghConfig.path.trim().split('/').map(encodeURIComponent).join('/');
-        return `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+        const { owner, repo, path } = core.ghConfig;
+        return `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${path}`;
     },
 
-    pullFromGithub: async (silent = false) => {
-        if (!core.isGithubConfigured() || core.isSyncing) return false;
+    syncFromGithub: async (silent = false) => {
+        if (!core.hasGithubConfig() || core.isSyncing) return;
         core.isSyncing = true;
-        if (!silent) core.setCloudStatus('syncing', 'Sincronitzant amb GitHub...');
-
-        const finishPull = (ok) => {
-            core.isSyncing = false;
-            const hasPending = (localStorage.getItem('nadalPendingSync') === '1');
-            if (core.queuedPush || (ok && hasPending)) {
-                core.queuedPush = false;
-                core.pushToGithub();
-            }
-            return ok;
-        };
+        if (!silent) core.updateCloudBadge('syncing');
 
         try {
             const headers = {
-                'Authorization': `Bearer ${core.ghConfig.token.trim()}`,
-                'Accept': 'application/vnd.github+json',
-                'X-GitHub-Api-Version': '2022-11-28'
+                Authorization: `Bearer ${core.ghConfig.token}`,
+                Accept: 'application/vnd.github+json'
             };
             if (core.ghEtag && silent) headers['If-None-Match'] = core.ghEtag;
 
-            const res = await fetch(core.getGithubApiUrl(), { method: 'GET', headers, cache: 'no-store' });
+            const resp = await fetch(core.getGithubApiUrl(), { headers, cache: 'no-store' });
 
-            if (res.status === 304) {
-                const nowTime = new Date().toLocaleTimeString('ca-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                core.setCloudStatus('ok', `Connectat (${nowTime})`);
-                return finishPull(true);
+            if (resp.status === 304) {
+                core.updateCloudBadge('ok');
+                core.isSyncing = false;
+                return;
             }
 
-            if (res.status === 404) {
-                core.ghSha = null;
-                core.setCloudStatus('ok', 'Núvol connectat (arxiu nou)');
-                return finishPull(true);
+            if (resp.status === 404) {
+                core.isSyncing = false;
+                await core.pushToGithub();
+                return;
             }
 
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
-            const newEtag = res.headers.get('ETag');
-            if (newEtag) core.ghEtag = newEtag;
+            core.ghEtag = resp.headers.get('ETag') || null;
+            const json = await resp.json();
+            core.ghSha = json.sha;
 
-            const payload = await res.json();
-            const remoteChanged = (payload.sha !== core.ghSha);
-            core.ghSha = payload.sha;
-            const hasPendingSync = (localStorage.getItem('nadalPendingSync') === '1');
+            const decoded = decodeURIComponent(escape(atob(json.content.replace(/\n/g, ''))));
+            const remoteData = JSON.parse(decoded);
 
-            if (payload.content && (remoteChanged || hasPendingSync)) {
-                const decodedStr = core.ghDecodeBase64(payload.content);
-                const remoteData = JSON.parse(decodedStr);
-                if (hasPendingSync) {
-                    core.data = core.mergeDataObjects(remoteData, core.data, true);
-                } else {
-                    core.data = Object.assign({ gifts: [], deletedIds: [], advent: {}, adventPool: [], budgets: {}, lastYear: {}, pins: {}, config: null }, remoteData);
-                }
-                localStorage.setItem('nadalData', JSON.stringify(core.data));
-                document.getElementById('lastSync').innerText = core.data.lastUpdate || 'Ara';
-                core.buildDynamicUI();
+            const hasPending = localStorage.getItem('nadalPendingSync') === '1';
+            if (hasPending) {
+                core.data = core.mergeDataObjects(core.data, remoteData);
+                core.migrateExpenseCategories();
+                core.saveLocal(false);
+                core.isSyncing = false;
+                await core.pushToGithub();
+                core.applyConfigToUI();
                 core.renderAll();
+                return;
             }
 
-            const nowTime = new Date().toLocaleTimeString('ca-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            core.setCloudStatus('ok', `Sincronitzat (${nowTime})`);
-            return finishPull(true);
+            core.data = Object.assign({
+                gifts: [], deletedIds: [], advent: {}, adventPool: [],
+                budgets: {}, lastYear: {}, pins: {},
+                config: JSON.parse(JSON.stringify(DEFAULT_CONFIG)), lastUpdate: ''
+            }, remoteData);
+
+            const migrated = core.migrateExpenseCategories();
+            core.saveLocal(migrated);
+            core.applyConfigToUI();
+            core.renderAll();
+            core.updateCloudBadge('ok');
         } catch (err) {
-            core.setCloudStatus('error', `Error núvol (${err.message})`);
-            return finishPull(false);
+            console.warn('GitHub sync error:', err);
+            const hasPending = localStorage.getItem('nadalPendingSync') === '1';
+            core.updateCloudBadge(hasPending ? 'offline' : 'error', err.message);
+        } finally {
+            core.isSyncing = false;
         }
     },
 
-    pushToGithub: async (retryCount = 0) => {
-        if (!core.isGithubConfigured()) return;
-        if (core.isSyncing) {
-            core.queuedPush = true;
-            return;
-        }
-        core.isSyncing = true;
-        core.queuedPush = false;
-        core.setCloudStatus('syncing', 'Guardant al núvol...');
+    pushToGithub: async (retryOnConflict = true) => {
+        if (!core.hasGithubConfig()) return;
+        core.updateCloudBadge('syncing');
 
         try {
-            const jsonStr = JSON.stringify(core.data, null, 2);
+            const contentStr = JSON.stringify(core.data, null, 2);
+            const contentB64 = btoa(unescape(encodeURIComponent(contentStr)));
             const body = {
-                message: `Actualització Nadal Tracker (${core.data.lastUpdate})`,
-                content: core.ghEncodeBase64(jsonStr)
+                message: `Sync Nadal Tracker (${new Date().toISOString().slice(0, 16).replace('T', ' ')})`,
+                content: contentB64
             };
             if (core.ghSha) body.sha = core.ghSha;
 
-            const res = await fetch(core.getGithubApiUrl(), {
+            const resp = await fetch(core.getGithubApiUrl(), {
                 method: 'PUT',
                 headers: {
-                    'Authorization': `Bearer ${core.ghConfig.token.trim()}`,
-                    'Accept': 'application/vnd.github+json',
-                    'Content-Type': 'application/json',
-                    'X-GitHub-Api-Version': '2022-11-28'
+                    Authorization: `Bearer ${core.ghConfig.token}`,
+                    Accept: 'application/vnd.github+json',
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(body)
             });
 
-            if ((res.status === 409 || res.status === 422) && retryCount < 2) {
-                const getRes = await fetch(core.getGithubApiUrl(), {
-                    method: 'GET',
+            if (resp.status === 409 && retryOnConflict) {
+                // Conflicte SHA: llegim remot, fusionem i reintentem una vegada
+                const getResp = await fetch(core.getGithubApiUrl(), {
                     headers: {
-                        'Authorization': `Bearer ${core.ghConfig.token.trim()}`,
-                        'Accept': 'application/vnd.github+json'
+                        Authorization: `Bearer ${core.ghConfig.token}`,
+                        Accept: 'application/vnd.github+json'
                     },
                     cache: 'no-store'
                 });
-                if (getRes.ok) {
-                    const remotePayload = await getRes.json();
-                    core.ghSha = remotePayload.sha;
-                    const remoteData = JSON.parse(core.ghDecodeBase64(remotePayload.content));
-                    core.data = core.mergeDataObjects(remoteData, core.data, true);
-                    localStorage.setItem('nadalData', JSON.stringify(core.data));
-                    core.isSyncing = false;
-                    return core.pushToGithub(retryCount + 1);
+                if (getResp.ok) {
+                    const remJson = await getResp.json();
+                    core.ghSha = remJson.sha;
+                    const remData = JSON.parse(decodeURIComponent(escape(atob(remJson.content.replace(/\n/g, '')))));
+                    core.data = core.mergeDataObjects(core.data, remData);
+                    core.migrateExpenseCategories();
+                    core.saveLocal(false);
+                    core.applyConfigToUI();
+                    core.renderAll();
+                    return core.pushToGithub(false);
                 }
             }
 
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
-            const result = await res.json();
-            if (result.content && result.content.sha) {
-                core.ghSha = result.content.sha;
-                core.ghEtag = null;
-            }
-
-            const nowTime = new Date().toLocaleTimeString('ca-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            core.setCloudStatus('ok', `Guardat al núvol (${nowTime})`);
-            core.isSyncing = false;
-
-            if (core.queuedPush) {
-                core.queuedPush = false;
-                core.pushToGithub();
-            } else {
-                try { localStorage.removeItem('nadalPendingSync'); } catch (e) {}
-            }
+            const resJson = await resp.json();
+            if (resJson.content && resJson.content.sha) core.ghSha = resJson.content.sha;
+            core.ghEtag = null;
+            localStorage.removeItem('nadalPendingSync');
+            core.updateCloudBadge('ok');
         } catch (err) {
-            core.setCloudStatus('error', `Error guardant (${err.message}) — Desat en local`);
-            core.isSyncing = false;
-            if (core.queuedPush) {
-                core.queuedPush = false;
-                core.pushToGithub();
-            }
+            console.warn('GitHub push error:', err);
+            localStorage.setItem('nadalPendingSync', '1');
+            core.updateCloudBadge('offline');
         }
     },
 
     manualSync: async () => {
-        if (!core.isGithubConfigured()) {
+        if (!core.hasGithubConfig()) {
             core.openConfigModal('github');
             return;
         }
-        await core.pullFromGithub(false);
+        core.ghEtag = null;
+        await core.syncFromGithub(false);
     },
 
     startPolling: () => {
         if (core.pollTimer) clearInterval(core.pollTimer);
         core.pollTimer = setInterval(() => {
-            if (!core.isGithubConfigured() || document.hidden) return;
-            const anyModalOpen = ALL_MODAL_IDS.some(id => document.getElementById(id).style.display === 'block');
-            if (!anyModalOpen) core.pullFromGithub(true);
+            if (!core.hasGithubConfig() || document.hidden) return;
+            const anyModalOpen = Array.from(document.querySelectorAll('.modal'))
+                .some(m => m.style.display === 'block');
+            if (!anyModalOpen) core.syncFromGithub(true);
         }, 15000);
     },
 
-    /* --- [6] INICI, PERSISTÈNCIA LOCAL I CONFIGURACIÓ (NÚVOL / FAMÍLIA) --- */
-    init: async () => {
-        core.loadGithubConfig();
-        const saved = localStorage.getItem('nadalData');
-        if (saved) {
-            core.data = Object.assign({ gifts: [], deletedIds: [], advent: {}, adventPool: [], budgets: {}, lastYear: {}, pins: {}, config: null }, JSON.parse(saved));
-            document.getElementById('lastSync').innerText = core.data.lastUpdate || 'Mai';
+    /* --- [4] MOTOR ECONÒMIC JERÀRQUIC (3 NIVELLS) I MODAL DE CONTROL ECONÒMIC --- */
+    getStoredEconVal: (store, key, fallbacks = []) => {
+        if (!store) return 0;
+        if (store[key] !== undefined && store[key] !== '') return parseFloat(store[key]) || 0;
+        for (const fb of fallbacks) {
+            if (fb && store[fb] !== undefined && store[fb] !== '') return parseFloat(store[fb]) || 0;
         }
-
-        // Inicialitza les pestanyes registrades
-        for (const v of Object.values(core.views)) {
-            if (typeof v.mount === 'function') v.mount();
-        }
-
-        core.buildDynamicUI();
-        core.setupSmartHeader();
-        core.setupPullToRefresh();
-        core.setupModalBackdropClicks();
-        core.setupKeyboardShortcuts();
-        core.renderCountdown();
-        core.generatePngIcons();
-        core.renderAll();
-
-        if (core.isGithubConfigured()) {
-            await core.pullFromGithub(false);
-            core.startPolling();
-        } else {
-            core.setCloudStatus('local', 'Mode Local (Núvol no configurat)');
-        }
+        return 0;
     },
 
-    saveLocal: () => {
-        core.data.lastUpdate = new Date().toLocaleString('ca-ES');
-        localStorage.setItem('nadalData', JSON.stringify(core.data));
-        document.getElementById('lastSync').innerText = core.data.lastUpdate;
-        if (core.isGithubConfigured()) {
-            try { localStorage.setItem('nadalPendingSync', '1'); } catch (e) {}
-            core.pushToGithub();
-        }
-    },
-
-    buildDynamicUI: () => {
+    computeEconomicTree: () => {
         const cfg = core.getConfig();
+        const budgets = core.data.budgets || {};
+        const lastYear = core.data.lastYear || {};
+        const expenseCats = core.getExpenseCategories();
 
-        const unlockSel = document.getElementById('unlockUser');
-        const prevUser = unlockSel.value;
-        unlockSel.innerHTML = '';
-        cfg.parents.forEach(p => {
-            const opt = document.createElement('option');
-            opt.value = p; opt.innerText = p;
-            unlockSel.appendChild(opt);
+        const makeChild = (id, key, label, rawName, hasLimit, fallbacks = []) => ({
+            id,
+            key,
+            label,
+            rawName,
+            hasLimit,
+            limit: hasLimit ? core.getStoredEconVal(budgets, key, fallbacks) : 0,
+            lastYear: hasLimit ? core.getStoredEconVal(lastYear, key, fallbacks) : 0,
+            spent: 0,
+            spentApprox: 0,
+            planned: 0,
+            items: []
         });
-        if (cfg.parents.includes(prevUser)) unlockSel.value = prevUser;
 
-        const events = core.getOrderedEvents();
-        const gEv = document.getElementById('gEvent');
-        const prevGEv = gEv.value;
-        gEv.innerHTML = '';
-        events.forEach(ev => {
-            gEv.innerHTML += `<option value="${ev}">${ev}</option>`;
+        const blocks = {
+            casa: {
+                id: 'casa',
+                icon: '🏠',
+                title: 'Nucli Familiar',
+                limitMode: 'children',
+                key: 'block:casa',
+                childrenMap: new Map(),
+                spent: 0, spentApprox: 0, planned: 0, limit: 0, lastYear: 0
+            },
+            dir1: {
+                id: 'dir1',
+                icon: '👨‍👩‍👧‍👦',
+                title: cfg.dir1Name,
+                limitMode: 'children',
+                key: 'block:dir1',
+                childrenMap: new Map(),
+                spent: 0, spentApprox: 0, planned: 0, limit: 0, lastYear: 0
+            },
+            dir2: {
+                id: 'dir2',
+                icon: '👨‍👩‍👧‍👦',
+                title: cfg.dir2Name,
+                limitMode: 'children',
+                key: 'block:dir2',
+                childrenMap: new Map(),
+                spent: 0, spentApprox: 0, planned: 0, limit: 0, lastYear: 0
+            },
+            ext1: {
+                id: 'ext1',
+                icon: '🌳',
+                title: cfg.ext1Name,
+                limitMode: 'block',
+                key: 'block:ext1',
+                fallbacks: [cfg.ext1Name],
+                childrenMap: new Map(),
+                spent: 0, spentApprox: 0, planned: 0,
+                limit: core.getStoredEconVal(budgets, 'block:ext1', [cfg.ext1Name]),
+                lastYear: core.getStoredEconVal(lastYear, 'block:ext1', [cfg.ext1Name])
+            },
+            ext2: {
+                id: 'ext2',
+                icon: '🌳',
+                title: cfg.ext2Name,
+                limitMode: 'block',
+                key: 'block:ext2',
+                fallbacks: [cfg.ext2Name],
+                childrenMap: new Map(),
+                spent: 0, spentApprox: 0, planned: 0,
+                limit: core.getStoredEconVal(budgets, 'block:ext2', [cfg.ext2Name]),
+                lastYear: core.getStoredEconVal(lastYear, 'block:ext2', [cfg.ext2Name])
+            },
+            expenses: {
+                id: 'expenses',
+                icon: '🎄',
+                title: 'Despeses Nadalenques',
+                limitMode: 'children',
+                key: 'block:expenses',
+                childrenMap: new Map(),
+                spent: 0, spentApprox: 0, planned: 0, limit: 0, lastYear: 0
+            },
+            altres: {
+                id: 'altres',
+                icon: '✨',
+                title: 'Altres / Amics',
+                limitMode: 'block',
+                key: 'block:altres',
+                fallbacks: ['Altres / Amics', 'Altres'],
+                childrenMap: new Map(),
+                spent: 0, spentApprox: 0, planned: 0,
+                limit: core.getStoredEconVal(budgets, 'block:altres', ['Altres / Amics', 'Altres']),
+                lastYear: core.getStoredEconVal(lastYear, 'block:altres', ['Altres / Amics', 'Altres'])
+            }
+        };
+
+        // Mapa prioritari persona -> bloc (evita duplicitats)
+        const personToBlock = new Map();
+        const registerMembers = (members, blockId, hasLimit) => {
+            members.forEach(m => {
+                if (!m || personToBlock.has(m)) return;
+                personToBlock.set(m, blockId);
+                blocks[blockId].childrenMap.set(
+                    m,
+                    makeChild(`${blockId}::${m}`, m, core.formatMemberLabel(m), m, hasLimit)
+                );
+            });
+        };
+
+        registerMembers(cfg.casaMembers, 'casa', true);
+        registerMembers(cfg.dir1Members, 'dir1', true);
+        registerMembers(cfg.dir2Members, 'dir2', true);
+        registerMembers(cfg.ext1Members, 'ext1', false);
+        registerMembers(cfg.ext2Members, 'ext2', false);
+
+        expenseCats.forEach(cat => {
+            blocks.expenses.childrenMap.set(
+                cat,
+                makeChild(`expenses::${cat}`, `exp:${cat}`, cat, cat, true, [cat])
+            );
         });
-        if (prevGEv && events.includes(prevGEv)) gEv.value = prevGEv;
 
-        const gRound = document.getElementById('gRound');
-        const prevRound = gRound.value;
-        gRound.innerHTML = '';
-        cfg.rounds.forEach(r => {
-            gRound.innerHTML += `<option value="${r}">${r}</option>`;
+        let lockedSecretsCount = 0;
+
+        // 1) Processar regals i despeses de core.data.gifts
+        (core.data.gifts || []).forEach(g => {
+            const d = core.resolveGiftDisplay(g);
+
+            if (d.isOthersSecret) {
+                if (d.isPaidByUs) lockedSecretsCount++;
+                return;
+            }
+            if (!d.isPaidByUs || d.isOtherHouse) return;
+
+            const isSpent = d.isExpense
+                ? !PLANNED_GIFT_STATES.includes(g.state)
+                : SPENT_GIFT_STATES.includes(g.state);
+            const isPlanned = PLANNED_GIFT_STATES.includes(g.state);
+            if (!isSpent && !isPlanned) return;
+
+            if (d.isExpense) {
+                const rawCat = g.expenseCat || '🎉 Altres despeses nadalenques';
+                const cat = LEGACY_EXPENSE_CAT_MAP[rawCat] || rawCat;
+                if (!blocks.expenses.childrenMap.has(cat)) {
+                    blocks.expenses.childrenMap.set(
+                        cat,
+                        makeChild(`expenses::${cat}`, `exp:${cat}`, cat, cat, true, [cat])
+                    );
+                }
+                const node = blocks.expenses.childrenMap.get(cat);
+                if (isSpent) {
+                    node.spent += d.priceVal;
+                    if (g.isApprox) node.spentApprox += d.priceVal;
+                } else {
+                    node.planned += d.priceVal;
+                }
+                node.items.push({
+                    kind: 'gift',
+                    id: g.id,
+                    title: d.titleDisplay,
+                    state: g.state,
+                    event: g.event || '',
+                    amount: d.priceVal,
+                    totalPrice: d.priceVal,
+                    splitCount: 1,
+                    isApprox: Boolean(g.isApprox),
+                    isSpent
+                });
+                return;
+            }
+
+            // Regals: repartiment proporcional entre destinataris
+            const targets = d.recips.length > 0 ? d.recips : ['Altres / Sense assignar'];
+            const splitCount = targets.length;
+            const share = d.priceVal / splitCount;
+
+            targets.forEach(person => {
+                const blockId = personToBlock.get(person) || 'altres';
+                const block = blocks[blockId];
+                if (!block.childrenMap.has(person)) {
+                    block.childrenMap.set(
+                        person,
+                        makeChild(`${blockId}::${person}`, person, core.formatMemberLabel(person), person, false)
+                    );
+                }
+                const node = block.childrenMap.get(person);
+                if (isSpent) {
+                    node.spent += share;
+                    if (g.isApprox) node.spentApprox += share;
+                } else {
+                    node.planned += share;
+                }
+                node.items.push({
+                    kind: 'gift',
+                    id: g.id,
+                    title: d.titleDisplay,
+                    state: g.state,
+                    event: g.event || '❓ Per decidir',
+                    amount: share,
+                    totalPrice: d.priceVal,
+                    splitCount,
+                    isApprox: Boolean(g.isApprox),
+                    isSpent
+                });
+            });
         });
-        if (prevRound && cfg.rounds.includes(prevRound)) gRound.value = prevRound;
 
-        const kids = core.getKidsList();
-        document.getElementById('presetKidsBtn').innerText = kids.length > 0 ? `👧👦 ${kids.join(' i ')}` : '👧👦 Fills';
+        // 2) Integrar despeses del Calendari d'Advent (dies 1..24 + Bateria d'idees)
+        const advCat = "🗓️ Calendari d'Advent";
+        const advNode = blocks.expenses.childrenMap.get(advCat);
+        if (advNode) {
+            Object.entries(core.data.advent || {}).forEach(([dayStr, item]) => {
+                if (!item || !item.title || !item.title.trim()) return;
+                const p = parseFloat(String(item.price || '').replace(',', '.')) || 0;
+                const isSpent = item.state === 'Comprat';
+                if (p === 0 && !isSpent) return;
+                if (isSpent) {
+                    advNode.spent += p;
+                    if (item.isApprox) advNode.spentApprox += p;
+                } else {
+                    advNode.planned += p;
+                }
+                advNode.items.push({
+                    kind: 'adventDay',
+                    id: String(dayStr),
+                    title: `Dia ${dayStr} des. · ${item.title}`,
+                    state: item.state || 'Idea',
+                    event: advCat,
+                    amount: p,
+                    totalPrice: p,
+                    splitCount: 1,
+                    isApprox: Boolean(item.isApprox),
+                    isSpent
+                });
+            });
 
-        const tree = {
-            "Casa": cfg.casaMembers,
+            (core.data.adventPool || []).forEach(item => {
+                if (!item || !item.title || !item.title.trim()) return;
+                const p = parseFloat(String(item.price || '').replace(',', '.')) || 0;
+                const isSpent = item.state === 'Comprat';
+                if (p === 0 && !isSpent) return;
+                if (isSpent) {
+                    advNode.spent += p;
+                    if (item.isApprox) advNode.spentApprox += p;
+                } else {
+                    advNode.planned += p;
+                }
+                advNode.items.push({
+                    kind: 'adventPool',
+                    id: item.id,
+                    title: `🧺 ${item.title}`,
+                    state: item.state || 'Idea',
+                    event: advCat,
+                    amount: p,
+                    totalPrice: p,
+                    splitCount: 1,
+                    isApprox: Boolean(item.isApprox),
+                    isSpent
+                });
+            });
+        }
+
+        // 3) Agregar subtotals per bloc i globals
+        const blockOrder = ['casa', 'dir1', 'dir2', 'ext1', 'ext2', 'expenses', 'altres'];
+        const totals = { spent: 0, spentApprox: 0, planned: 0, limit: 0, lastYear: 0, lockedSecretsCount };
+        const blockList = [];
+
+        blockOrder.forEach(bId => {
+            const b = blocks[bId];
+            b.children = Array.from(b.childrenMap.values());
+            b.children.forEach(c => {
+                b.spent += c.spent;
+                b.spentApprox += c.spentApprox;
+                b.planned += c.planned;
+                if (b.limitMode === 'children') {
+                    b.limit += c.limit;
+                    b.lastYear += c.lastYear;
+                }
+            });
+
+            // Per a blocs extensos i altres, amaguem membres amb 0 moviments a Ràtios (mantenim neteja)
+            b.activeChildren = b.limitMode === 'block'
+                ? b.children.filter(c => c.items.length > 0)
+                : b.children;
+
+            totals.spent += b.spent;
+            totals.spentApprox += b.spentApprox;
+            totals.planned += b.planned;
+            totals.limit += b.limit;
+            totals.lastYear += b.lastYear;
+
+            blockList.push(b);
+        });
+
+        return { blocks: blockList, totals };
+    },
+
+    updateHeaderBudgets: () => {
+        const { totals } = core.computeEconomicTree();
+        const previstEl = document.getElementById('budgetPrevist');
+        const gastatEl = document.getElementById('budgetGastat');
+        const subEl = document.getElementById('budgetGastatSub');
+        const pctEl = document.getElementById('budgetPct');
+        const barEl = document.getElementById('headerProgressBar');
+
+        if (previstEl) previstEl.innerText = core.formatMoney(totals.limit);
+        if (gastatEl) gastatEl.innerText = core.formatMoney(totals.spent);
+
+        if (subEl) {
+            if (totals.spentApprox > 0) {
+                const def = Math.max(0, totals.spent - totals.spentApprox);
+                subEl.innerText = `Def: ${def.toFixed(0)}€ · ~${totals.spentApprox.toFixed(0)}€`;
+                subEl.classList.remove('hidden');
+            } else {
+                subEl.classList.add('hidden');
+            }
+        }
+
+        const pct = totals.limit > 0 ? Math.round((totals.spent / totals.limit) * 100) : 0;
+        if (pctEl) pctEl.innerText = `${pct}%`;
+        if (barEl) {
+            barEl.style.width = `${Math.min(100, pct)}%`;
+            barEl.style.background = pct > 100 ? '#ff6b6b' : 'var(--c-gold)';
+        }
+    },
+
+    openBudgetsModal: (tab = 'ratios') => {
+        core.switchBudgetTab(tab);
+        document.getElementById('budgetsModal').style.display = 'block';
+    },
+
+    switchBudgetTab: (tab) => {
+        ['ratios', 'limits', 'lastYear'].forEach(t => {
+            const btnId = t === 'ratios' ? 'tabBtnRatios' : (t === 'limits' ? 'tabBtnLimits' : 'tabBtnLastYear');
+            const panelId = t === 'ratios' ? 'tabRatios' : (t === 'limits' ? 'tabLimits' : 'tabLastYear');
+            document.getElementById(btnId)?.classList.toggle('active', t === tab);
+            document.getElementById(panelId)?.classList.toggle('hidden', t !== tab);
+        });
+
+        if (tab === 'ratios') core.renderRatiosTab();
+        else if (tab === 'limits') core.renderEconInputsTab('limits');
+        else if (tab === 'lastYear') core.renderEconInputsTab('lastYear');
+    },
+
+    toggleEconNode: (nodeKey) => {
+        core.econExpanded[nodeKey] = !core.econExpanded[nodeKey];
+        core.renderRatiosTab();
+    },
+
+    setAllEconBlocks: (expand) => {
+        const { blocks } = core.computeEconomicTree();
+        blocks.forEach(b => {
+            core.econExpanded[`blk:${b.id}`] = expand;
+            if (!expand) {
+                b.children.forEach(c => { core.econExpanded[`ch:${c.id}`] = false; });
+            }
+        });
+        core.renderRatiosTab();
+    },
+
+    openFromEconItem: (kind, id) => {
+        core.closeModal('budgetsModal');
+        if (kind === 'gift') {
+            core.openModal(id);
+        } else if (kind === 'adventDay') {
+            core.switchMainView('advent');
+            if (core.views.advent) core.views.advent.openDayModal(Number(id));
+        } else if (kind === 'adventPool') {
+            core.switchMainView('advent');
+            if (core.views.advent) core.views.advent.openPoolModal(id);
+        }
+    },
+
+    buildDiffHtml: (current, lastYr) => {
+        if (!lastYr || lastYr <= 0) return `<span class="econ-muted">Any passat: —</span>`;
+        const diff = current - lastYr;
+        const pct = Math.round((diff / lastYr) * 100);
+        const sign = diff > 0 ? '+' : '';
+        const cls = diff > 0.01 ? 'diff-up' : (diff < -0.01 ? 'diff-down' : 'econ-muted');
+        return `<span>Any passat: <b>${core.formatMoney(lastYr)}</b> (<span class="${cls}">${sign}${core.formatMoney(diff)} · ${sign}${pct}%</span>)</span>`;
+    },
+
+    renderRatiosTab: () => {
+        const { blocks, totals } = core.computeEconomicTree();
+        const summaryBox = document.getElementById('ratiosSummaryBox');
+        const listCont = document.getElementById('ratiosListContainer');
+        const oldExpCont = document.getElementById('expenseBreakdownContainer');
+        if (oldExpCont) oldExpCont.innerHTML = '';
+        if (!summaryBox || !listCont) return;
+
+        const pctTotal = totals.limit > 0 ? Math.round((totals.spent / totals.limit) * 100) : 0;
+        const remain = totals.limit - totals.spent;
+        const approxNote = totals.spentApprox > 0
+            ? ` <span class="badge approx">~${core.formatMoney(totals.spentApprox)} aprox.</span>`
+            : '';
+        const plannedNote = totals.planned > 0
+            ? `<div class="econ-summary-line"><span>⏳ Previst (Idees / Decidits):</span><b>+${core.formatMoney(totals.planned)}</b></div>`
+            : '';
+        const secretNote = totals.lockedSecretsCount > 0
+            ? `<div class="econ-secret-note">🔒 Hi ha ${totals.lockedSecretsCount} ${totals.lockedSecretsCount === 1 ? 'regal Top Secret bloquejat' : 'regals Top Secret bloquejats'} que no sumen fins a desbloquejar.</div>`
+            : '';
+
+        summaryBox.innerHTML = `
+            <div class="econ-summary-line">
+                <span>💰 <b>Gastat Enguany:</b></span>
+                <span style="font-size:1.08em; font-weight:800; color:var(--c-red);">${core.formatMoney(totals.spent)}${approxNote}</span>
+            </div>
+            ${plannedNote}
+            <div class="econ-summary-line">
+                <span>🎯 Límit Total Enguany:</span>
+                <b>${core.formatMoney(totals.limit)} (${pctTotal}%)</b>
+            </div>
+            ${totals.limit > 0 ? `
+                <div class="ratio-bar-bg" style="height:10px; margin:7px 0;">
+                    <div class="ratio-bar-fill ${pctTotal > 100 ? 'over' : ''}" style="width:${Math.min(100, pctTotal)}%;"></div>
+                </div>
+                <div class="econ-summary-line" style="font-size:0.86em;">
+                    <span>${remain >= 0 ? '🟢 Marge disponible:' : '🔴 Excedit en:'}</span>
+                    <b class="${remain < 0 ? 'diff-up' : 'diff-down'}">${core.formatMoney(Math.abs(remain))}</b>
+                </div>
+            ` : ''}
+            <div class="econ-summary-line" style="margin-top:6px; padding-top:6px; border-top:1px dashed #d5dbdb; font-size:0.88em;">
+                ${core.buildDiffHtml(totals.spent, totals.lastYear)}
+            </div>
+            ${secretNote}
+            <div class="econ-expand-actions">
+                <button type="button" class="preset-btn" onclick="app.setAllEconBlocks(true)">📂 Desplegar blocs</button>
+                <button type="button" class="preset-btn" onclick="app.setAllEconBlocks(false)">📁 Plegar tot</button>
+            </div>
+        `;
+
+        let html = '';
+        blocks.forEach(b => {
+            // Amaguem blocs buits sense membres ni diners (excepte Casa i Despeses)
+            if (b.id !== 'casa' && b.id !== 'expenses' && b.children.length === 0 && b.spent === 0 && b.planned === 0 && b.limit === 0 && b.lastYear === 0) {
+                return;
+            }
+
+            const blkKey = `blk:${b.id}`;
+            const isOpen = Boolean(core.econExpanded[blkKey]);
+            const pct = b.limit > 0 ? Math.round((b.spent / b.limit) * 100) : 0;
+            const totalItems = b.children.reduce((acc, c) => acc + c.items.length, 0);
+            const blockModeTag = b.limitMode === 'block'
+                ? `<span class="econ-tag-pill">Límit per bloc</span>`
+                : '';
+
+            html += `
+                <div class="econ-block-card ${isOpen ? 'is-open' : ''}">
+                    <div class="econ-block-header" onclick="app.toggleEconNode('${blkKey}')">
+                        <div class="econ-block-title-row">
+                            <span class="econ-caret">${isOpen ? '▾' : '▸'}</span>
+                            <span class="econ-block-title">${b.icon} ${core.escapeHtml(b.title)}</span>
+                            ${blockModeTag}
+                            <span class="econ-count-badge">${totalItems}</span>
+                        </div>
+                        <div class="econ-block-amount">
+                            <b>${core.formatMoney(b.spent)}</b>
+                            ${b.limit > 0 ? `<span class="econ-limit-sub">/ ${core.formatMoney(b.limit)} (${pct}%)</span>` : ''}
+                        </div>
+                    </div>
+                    ${b.limit > 0 ? `
+                        <div class="ratio-bar-bg" style="margin:6px 0 4px 0;">
+                            <div class="ratio-bar-fill ${pct > 100 ? 'over' : ''}" style="width:${Math.min(100, pct)}%;"></div>
+                        </div>
+                    ` : ''}
+                    <div class="ratio-details" style="margin-top:4px;">
+                        ${core.buildDiffHtml(b.spent, b.lastYear)}
+                        ${b.planned > 0 ? `<span class="econ-planned-tag">⏳ Previst: +${core.formatMoney(b.planned)}</span>` : ''}
+                    </div>
+            `;
+
+            if (isOpen) {
+                html += `<div class="econ-children-list">`;
+                if (b.activeChildren.length === 0) {
+                    html += `<div class="econ-empty-sub">Cap moviment registrat en aquest bloc.</div>`;
+                } else {
+                    b.activeChildren.forEach(c => {
+                        const chKey = `ch:${c.id}`;
+                        const chOpen = Boolean(core.econExpanded[chKey]);
+                        const hasItems = c.items.length > 0;
+                        const cPct = c.hasLimit && c.limit > 0 ? Math.round((c.spent / c.limit) * 100) : 0;
+                        const safeChKey = chKey.replace(/'/g, "\\'");
+
+                        html += `
+                            <div class="econ-child-card ${chOpen ? 'is-open' : ''}">
+                                <div class="econ-child-header ${hasItems ? 'clickable' : ''}" ${hasItems ? `onclick="app.toggleEconNode('${safeChKey}')"` : ''}>
+                                    <div class="econ-child-left">
+                                        <span class="econ-caret-sm">${hasItems ? (chOpen ? '▾' : '▸') : '·'}</span>
+                                        <span class="econ-child-name">${core.escapeHtml(c.label)}</span>
+                                        ${hasItems ? `<span class="econ-count-badge sm">${c.items.length}</span>` : ''}
+                                    </div>
+                                    <div class="econ-child-right">
+                                        <b>${core.formatMoney(c.spent)}</b>
+                                        ${c.hasLimit && c.limit > 0 ? `<span class="econ-limit-sub">/ ${core.formatMoney(c.limit)} (${cPct}%)</span>` : ''}
+                                    </div>
+                                </div>
+                                ${c.hasLimit && c.limit > 0 ? `
+                                    <div class="ratio-bar-bg slim">
+                                        <div class="ratio-bar-fill ${cPct > 100 ? 'over' : ''}" style="width:${Math.min(100, cPct)}%;"></div>
+                                    </div>
+                                ` : ''}
+                                <div class="econ-child-meta">
+                                    ${c.hasLimit ? core.buildDiffHtml(c.spent, c.lastYear) : `<span class="econ-muted">Desglossament informatiu del bloc</span>`}
+                                    ${c.planned > 0 ? `<span class="econ-planned-tag">⏳ +${core.formatMoney(c.planned)}</span>` : ''}
+                                </div>
+                        `;
+
+                        if (chOpen && hasItems) {
+                            const spentItems = c.items.filter(it => it.isSpent);
+                            const plannedItems = c.items.filter(it => !it.isSpent);
+
+                            html += `<div class="econ-items-list">`;
+                            spentItems.forEach(it => { html += core.buildEconItemRowHtml(it); });
+                            if (plannedItems.length > 0) {
+                                html += `<div class="econ-items-divider">⏳ Previst / Idees (no suma a Gastat)</div>`;
+                                plannedItems.forEach(it => { html += core.buildEconItemRowHtml(it); });
+                            }
+                            html += `</div>`;
+                        }
+
+                        html += `</div>`;
+                    });
+                }
+                html += `</div>`;
+            }
+
+            html += `</div>`;
+        });
+
+        listCont.innerHTML = html;
+    },
+
+    buildEconItemRowHtml: (it) => {
+        const safeId = String(it.id).replace(/'/g, "\\'");
+        const splitTag = it.splitCount > 1
+            ? `<span class="econ-split-pill" title="Import total: ${core.formatMoney(it.totalPrice)} repartit entre ${it.splitCount}">÷${it.splitCount}</span>`
+            : '';
+        const approxPrefix = it.isApprox ? '~' : '';
+        const stateIcon = it.state === 'Embolicat' ? '🎁'
+            : (it.state === 'El tenim' || it.state === 'Comprat' ? '✅'
+            : (it.state === 'Comprat/Delivery' ? '🚚'
+            : (it.state === 'Decidit' ? '🎯' : '💡')));
+
+        return `
+            <div class="econ-item-row ${it.isSpent ? '' : 'is-planned'}" onclick="app.openFromEconItem('${it.kind}', '${safeId}')">
+                <div class="econ-item-main">
+                    <span class="econ-item-title">${stateIcon} ${core.escapeHtml(it.title)}</span>
+                    ${splitTag}
+                </div>
+                <div class="econ-item-price">${approxPrefix}${core.formatMoney(it.amount)}</div>
+            </div>
+        `;
+    },
+
+    renderEconInputsTab: (mode) => {
+        const { blocks } = core.computeEconomicTree();
+        const contId = mode === 'limits' ? 'budgetInputsContainer' : 'lastYearInputsContainer';
+        const container = document.getElementById(contId);
+        if (!container) return;
+
+        const store = mode === 'limits' ? (core.data.budgets || {}) : (core.data.lastYear || {});
+        const labelTitle = mode === 'limits' ? 'Total Límits Enguany' : 'Total Any Passat';
+
+        let html = `
+            <div class="econ-total-live-bar">
+                <span>${labelTitle}:</span>
+                <b id="econGrandTotal_${mode}">0,00 €</b>
+            </div>
+        `;
+
+        blocks.forEach(b => {
+            if (b.limitMode === 'children' && b.children.length === 0) return;
+
+            if (b.limitMode === 'block') {
+                const rawVal = core.getStoredEconVal(store, b.key, b.fallbacks || []);
+                const displayVal = rawVal > 0 ? rawVal : '';
+                const safeKey = core.escapeHtml(b.key);
+                const hint = b.id === 'altres'
+                    ? 'Amics, detalls puntuals o sense assignar'
+                    : 'Import global del bloc (absorbeix amic invisible rotatiu)';
+
+                html += `
+                    <div class="econ-input-block">
+                        <div class="econ-input-block-head is-single">
+                            <div>
+                                <div class="econ-input-block-title">${b.icon} ${core.escapeHtml(b.title)}</div>
+                                <div class="cfg-hint">${hint}</div>
+                            </div>
+                            <input type="number" step="0.01" class="econ-num-input"
+                                data-econ-mode="${mode}" data-econ-block="${b.id}" data-econ-key="${safeKey}"
+                                value="${displayVal}" placeholder="0 €"
+                                oninput="app.recalcEconInputSubtotals('${mode}')">
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            html += `
+                <div class="econ-input-block">
+                    <div class="econ-input-block-head">
+                        <span class="econ-input-block-title">${b.icon} ${core.escapeHtml(b.title)}</span>
+                        <span class="econ-input-subtotal" id="econSub_${mode}_${b.id}">0,00 €</span>
+                    </div>
+                    <div class="econ-input-rows">
+            `;
+
+            b.children.forEach(c => {
+                const fallbacks = c.key.startsWith('exp:') ? [c.rawName] : [];
+                const rawVal = core.getStoredEconVal(store, c.key, fallbacks);
+                const displayVal = rawVal > 0 ? rawVal : '';
+                const safeKey = core.escapeHtml(c.key);
+                html += `
+                    <div class="budget-row">
+                        <span>${core.escapeHtml(c.label)}</span>
+                        <input type="number" step="0.01" class="econ-num-input"
+                            data-econ-mode="${mode}" data-econ-block="${b.id}" data-econ-key="${safeKey}"
+                            value="${displayVal}" placeholder="0 €"
+                            oninput="app.recalcEconInputSubtotals('${mode}')">
+                    </div>
+                `;
+            });
+
+            html += `</div></div>`;
+        });
+
+        container.innerHTML = html;
+        core.recalcEconInputSubtotals(mode);
+    },
+
+    recalcEconInputSubtotals: (mode) => {
+        const inputs = document.querySelectorAll(`input[data-econ-mode="${mode}"]`);
+        const blockSums = {};
+        let grandTotal = 0;
+
+        inputs.forEach(inp => {
+            const val = parseFloat(inp.value) || 0;
+            const blk = inp.dataset.econBlock;
+            blockSums[blk] = (blockSums[blk] || 0) + val;
+            grandTotal += val;
+        });
+
+        Object.entries(blockSums).forEach(([blk, sum]) => {
+            const el = document.getElementById(`econSub_${mode}_${blk}`);
+            if (el) el.innerText = core.formatMoney(sum);
+        });
+
+        const totalEl = document.getElementById(`econGrandTotal_${mode}`);
+        if (totalEl) totalEl.innerText = core.formatMoney(grandTotal);
+    },
+
+    saveBudgets: () => {
+        const next = Object.assign({}, core.data.budgets || {});
+        document.querySelectorAll('input[data-econ-mode="limits"]').forEach(inp => {
+            const key = inp.dataset.econKey;
+            const val = parseFloat(inp.value);
+            if (!isNaN(val) && val > 0) next[key] = Number(val.toFixed(2));
+            else delete next[key];
+        });
+        core.data.budgets = next;
+        core.saveLocal();
+        core.updateHeaderBudgets();
+        core.switchBudgetTab('ratios');
+    },
+
+    saveLastYear: () => {
+        const next = Object.assign({}, core.data.lastYear || {});
+        document.querySelectorAll('input[data-econ-mode="lastYear"]').forEach(inp => {
+            const key = inp.dataset.econKey;
+            const val = parseFloat(inp.value);
+            if (!isNaN(val) && val > 0) next[key] = Number(val.toFixed(2));
+            else delete next[key];
+        });
+        core.data.lastYear = next;
+        core.saveLocal();
+        core.switchBudgetTab('ratios');
+    },
+
+    /* --- [5] FORMULARI DE REGALS / DESPESES (INCL. CATEGORIES ON-THE-FLY) --- */
+    populateExpenseCatSelect: (selectedVal = '') => {
+        const sel = document.getElementById('gExpenseCat');
+        if (!sel) return;
+        const cats = core.getExpenseCategories();
+        sel.innerHTML = cats.map(c => `<option value="${core.escapeHtml(c)}">${core.escapeHtml(c)}</option>`).join('');
+        if (selectedVal && cats.includes(selectedVal)) sel.value = selectedVal;
+    },
+
+    addCustomExpenseCategory: () => {
+        const raw = prompt('Nom de la nova categoria de despesa (pots incloure un emoji al principi, ex: 🎀 Embolcalls):');
+        if (!raw) return;
+        const clean = raw.trim();
+        if (!clean) return;
+
+        if (!core.data.config) core.data.config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+        const current = core.getExpenseCategories();
+        if (!current.includes(clean)) {
+            current.push(clean);
+            core.data.config.expenseCategories = current;
+            core.saveLocal();
+        }
+        core.populateExpenseCatSelect(clean);
+    },
+
+    buildCheckboxGroups: (containerId, groups, checkedValues = []) => {
+        const cont = document.getElementById(containerId);
+        if (!cont) return;
+        const checkedSet = new Set(checkedValues);
+        let html = '';
+
+        Object.entries(groups).forEach(([groupTitle, members]) => {
+            if (!members || members.length === 0) return;
+            html += `<div class="multi-group-title">${core.escapeHtml(groupTitle)}</div>`;
+            members.forEach(m => {
+                const isChk = checkedSet.has(m) ? 'checked' : '';
+                html += `
+                    <label class="multi-item">
+                        <input type="checkbox" value="${core.escapeHtml(m)}" ${isChk}>
+                        <span>${core.escapeHtml(core.formatMemberLabel(m))}</span>
+                    </label>
+                `;
+            });
+        });
+        cont.innerHTML = html;
+    },
+
+    populateGiftFormLists: (selectedRecips = [], selectedFroms = []) => {
+        const cfg = core.getConfig();
+        core.buildCheckboxGroups('gRecipientsContainer', {
+            'Casa': cfg.casaMembers,
             [cfg.dir1Name]: cfg.dir1Members,
             [cfg.dir2Name]: cfg.dir2Members,
             [cfg.ext1Name]: cfg.ext1Members,
             [cfg.ext2Name]: cfg.ext2Members,
-            "Especials": ["Tió", "Reis Mags", "Amics/Altres"]
-        };
+            'Especials': ['Amics/Altres', 'Tió', 'Reis Mags']
+        }, selectedRecips);
 
-        const recipsBox = document.getElementById('gRecipientsContainer');
-        const fromsBox = document.getElementById('gFromContainer');
-        const shareBox = document.getElementById('sharePeopleContainer');
-        const expSelect = document.getElementById('gExpenseCat');
+        core.buildCheckboxGroups('gFromContainer', {
+            'Casa i Tradició': ['Nosaltres', 'Tió', 'Pare Noel', 'Reis Mags'],
+            'Unitats Familiars': [cfg.dir1Name, cfg.dir2Name, cfg.ext1Name, cfg.ext2Name].filter(Boolean),
+            'Membres': [...cfg.dir1Members, ...cfg.dir2Members]
+        }, selectedFroms);
 
-        recipsBox.innerHTML = '';
-        fromsBox.innerHTML = '';
-        shareBox.innerHTML = '';
-        expSelect.innerHTML = '';
+        const evSel = document.getElementById('gEvent');
+        if (evSel) {
+            evSel.innerHTML = core.getOrderedEvents()
+                .map(ev => `<option value="${core.escapeHtml(ev)}">${core.escapeHtml(ev)}</option>`)
+                .join('');
+        }
 
-        core.expenseCategories.forEach(cat => {
-            const opt = document.createElement('option');
-            opt.value = cat; opt.innerText = cat;
-            expSelect.appendChild(opt);
-        });
+        const rSel = document.getElementById('gRound');
+        if (rSel) {
+            rSel.innerHTML = '<option value="">(Sense ronda)</option>' +
+                cfg.rounds.map(r => `<option value="${core.escapeHtml(r)}">${core.escapeHtml(r)}</option>`).join('');
+        }
 
-        Object.entries(tree).forEach(([group, members]) => {
-            if (!members || members.length === 0) return;
-            recipsBox.innerHTML += `<div class="multi-group-title">${group}</div>`;
-            fromsBox.innerHTML += `<div class="multi-group-title">${group}</div>`;
-            if (group !== "Especials") shareBox.innerHTML += `<div class="multi-group-title">${group}</div>`;
+        core.populateExpenseCatSelect();
+    },
 
-            members.forEach(m => {
-                const htmlItem = (nameAttr, onChg = '') => `
-                    <label class="multi-item">
-                        <input type="checkbox" name="${nameAttr}" value="${m}" ${onChg}>
-                        <span>${m}</span>
-                    </label>`;
-                recipsBox.innerHTML += htmlItem('gRecipCheck');
-                fromsBox.innerHTML += htmlItem('gFromCheck');
-                if (group !== "Especials") shareBox.innerHTML += htmlItem('sharePersonCheck', 'onchange="app.generateShareText()"');
+    setItemType: (type, defaultState = null) => {
+        document.getElementById('gType').value = type;
+        document.getElementById('typeBtnGift')?.classList.toggle('active', type === 'gift');
+        document.getElementById('typeBtnExpense')?.classList.toggle('active-green', type === 'expense');
+        document.getElementById('typeBtnExpense')?.classList.remove('active');
+
+        const isExp = type === 'expense';
+        document.getElementById('expenseFields')?.classList.toggle('hidden', !isExp);
+        document.getElementById('giftOnlyFields')?.classList.toggle('hidden', isExp);
+        document.getElementById('secretWrapper')?.classList.toggle('hidden', isExp);
+
+        const titleLbl = document.getElementById('lblTitle');
+        const titleInp = document.getElementById('gTitle');
+        if (titleLbl) titleLbl.innerText = isExp ? 'Concepte de la despesa:' : 'Descripció (Què és?):';
+        if (titleInp) titleInp.placeholder = isExp ? 'Ex: Paper d\'embolicar, Neules, Llums...' : 'Ex: Bicicleta vermella';
+
+        core.populateStateSelect(type, defaultState);
+        core.toggleDeliveryField();
+    },
+
+    populateStateSelect: (type, desiredState = null) => {
+        const sel = document.getElementById('gState');
+        if (!sel) return;
+        const prev = desiredState || sel.value;
+
+        let options = [];
+        if (type === 'expense') {
+            options = [
+                { value: 'Idea', label: '💡 Idea / Pressupostat' },
+                { value: 'Decidit', label: '🎯 Decidit (Pendent de pagar)' },
+                { value: 'El tenim', label: '✅ Comprat / Pagat' }
+            ];
+        } else {
+            const paidByUs = document.getElementById('gPaidByUs')?.checked !== false;
+            options = paidByUs
+                ? [
+                    { value: 'Idea', label: '💡 Idea' },
+                    { value: 'Decidit', label: '🎯 Decidit' },
+                    { value: 'Comprat/Delivery', label: '🚚 Comprat/Delivery' },
+                    { value: 'El tenim', label: '✅ El tenim' },
+                    { value: 'Embolicat', label: '🎁 Embolicat' }
+                ]
+                : [
+                    { value: 'Idea', label: '💡 Idea (per proposar)' },
+                    { value: 'Confirmat', label: '🏡 Confirmat (ho porten ells)' }
+                ];
+        }
+
+        sel.innerHTML = options.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
+        if (options.some(o => o.value === prev)) sel.value = prev;
+        else sel.value = options[0].value;
+    },
+
+    onPaidByUsChange: () => {
+        const paid = document.getElementById('gPaidByUs')?.checked !== false;
+        const lbl = document.getElementById('paidByUsLabel');
+        const txt = document.getElementById('paidByUsText');
+        const priceLbl = document.getElementById('lblPrice');
+
+        if (lbl) lbl.classList.toggle('is-other-house', !paid);
+        if (txt) {
+            txt.innerText = paid
+                ? '💰 Ho paguem nosaltres (Anotar la nostra aportació)'
+                : "🏡 Ho paga una altra casa (No suma al nostre pressupost)";
+        }
+        if (priceLbl) {
+            priceLbl.innerText = paid
+                ? 'Preu (€ — nostra part) i Tipus d\'Import:'
+                : 'Preu orientatiu (€ — opcional, no suma al pressupost):';
+        }
+        core.populateStateSelect('gift', paid ? 'Idea' : 'Confirmat');
+        core.toggleDeliveryField();
+    },
+
+    toggleRounds: () => {
+        const cfg = core.getConfig();
+        const ev = document.getElementById('gEvent')?.value || '';
+        const show = ev === cfg.bigTioName && cfg.rounds.length > 0;
+        document.getElementById('roundContainer')?.classList.toggle('hidden', !show);
+    },
+
+    toggleDeliveryField: () => {
+        const isExp = document.getElementById('gType')?.value === 'expense';
+        const paid = document.getElementById('gPaidByUs')?.checked !== false;
+        const st = document.getElementById('gState')?.value || '';
+        const show = !isExp && paid && (st === 'Comprat/Delivery' || st === 'Decidit' || st === 'El tenim');
+        document.getElementById('deliveryDateContainer')?.classList.toggle('hidden', !show);
+    },
+
+    openModal: (id = null) => {
+        core.isDuplicating = false;
+        document.getElementById('dupBanner')?.classList.add('hidden');
+
+        const g = id ? core.data.gifts.find(x => x.id === id) : null;
+        const d = g ? core.resolveGiftDisplay(g) : null;
+
+        document.getElementById('giftId').value = g ? g.id : '';
+        document.getElementById('modalTitle').innerText = g ? 'Editar Element ✏️' : 'Nou Element 🎁';
+        document.getElementById('btnDuplicate')?.classList.toggle('hidden', !g);
+        document.getElementById('btnDelete')?.classList.toggle('hidden', !g);
+
+        const recips = d ? d.recips : [];
+        const froms = d ? d.froms : ['Nosaltres'];
+        core.populateGiftFormLists(recips, froms);
+
+        const type = g ? (g.type || 'gift') : 'gift';
+        document.getElementById('gPaidByUs').checked = g ? (g.paidByUs !== false) : true;
+        core.setItemType(type, g ? g.state : 'Idea');
+        if (type === 'gift') core.onPaidByUsChange();
+        if (g) document.getElementById('gState').value = g.state;
+
+        document.getElementById('gTitle').value = d ? d.titleDisplay : '';
+        if (type === 'expense') {
+            core.populateExpenseCatSelect(g.expenseCat || DEFAULT_EXPENSE_CATEGORIES[0]);
+        }
+        document.getElementById('gEvent').value = (g && g.event) ? g.event : (type === 'expense' ? '✨ General Festes' : '🪵 Tió Casa');
+        core.toggleRounds();
+        if (g && g.round) document.getElementById('gRound').value = g.round;
+
+        document.getElementById('gDeliveryDate').value = d ? d.deliveryDate : '';
+        core.toggleDeliveryField();
+
+        document.getElementById('gPrice').value = (d && d.priceVal > 0) ? d.priceVal : '';
+        document.getElementById('gPriceType').value = (g && g.isApprox) ? 'approx' : 'definitive';
+        document.getElementById('gUrl').value = d ? d.shopUrl : '';
+        document.getElementById('gImage').value = d ? d.imgUrl : '';
+        document.getElementById('gComments').value = d ? d.commentsDisplay : '';
+
+        const secCont = document.getElementById('secretContainer');
+        const secWarn = document.getElementById('secretWarning');
+        const secChk = document.getElementById('gSecret');
+        if (core.currentUser) {
+            secCont.style.display = 'block';
+            secWarn.style.display = 'none';
+            secChk.checked = Boolean(g && g.isSecret);
+        } else {
+            secCont.style.display = 'none';
+            secWarn.style.display = 'block';
+            secChk.checked = false;
+        }
+
+        document.getElementById('giftModal').style.display = 'block';
+    },
+
+    openModalForTarget: (targetType, targetVal) => {
+        core.openModal(null);
+        const cfg = core.getConfig();
+        let preselect = [];
+        if (targetType === 'person' && targetVal) preselect = [targetVal];
+        else if (targetType === 'casa4') preselect = [...cfg.casaMembers];
+
+        if (preselect.length > 0) {
+            document.querySelectorAll('#gRecipientsContainer input[type="checkbox"]').forEach(cb => {
+                cb.checked = preselect.includes(cb.value);
             });
-        });
-
-        for (const v of Object.values(core.views)) {
-            if (typeof v.onConfigChange === 'function') v.onConfigChange(cfg);
         }
     },
 
-    openConfigModal: (defaultTab = 'github') => {
+    saveGift: () => {
+        const type = document.getElementById('gType').value || 'gift';
+        const title = document.getElementById('gTitle').value.trim();
+        if (!title) {
+            alert('Escriu una descripció o concepte.');
+            return;
+        }
+
+        const isExpense = type === 'expense';
+        const isSecret = !isExpense && Boolean(core.currentUser) && document.getElementById('gSecret').checked;
+        const paidByUs = isExpense ? true : document.getElementById('gPaidByUs').checked;
+
+        const recips = isExpense
+            ? []
+            : Array.from(document.querySelectorAll('#gRecipientsContainer input:checked')).map(cb => cb.value);
+        const froms = isExpense
+            ? []
+            : Array.from(document.querySelectorAll('#gFromContainer input:checked')).map(cb => cb.value);
+
+        if (!isExpense && recips.length === 0) {
+            alert('Marca almenys una persona a "Per a qui?".');
+            return;
+        }
+
+        const cfg = core.getConfig();
+        const ev = document.getElementById('gEvent').value;
+        const roundVal = (ev === cfg.bigTioName) ? (document.getElementById('gRound').value || null) : null;
+        const state = document.getElementById('gState').value;
+        const deliveryDate = document.getElementById('gDeliveryDate').value || '';
+        const priceRaw = document.getElementById('gPrice').value.trim();
+        const isApprox = document.getElementById('gPriceType').value === 'approx';
+        const urlRaw = document.getElementById('gUrl').value.trim();
+        const imgRaw = document.getElementById('gImage').value.trim();
+        const commRaw = document.getElementById('gComments').value.trim();
+
+        const existingId = document.getElementById('giftId').value;
+        const id = existingId || Date.now().toString();
+
+        const obj = {
+            id,
+            type,
+            expenseCat: isExpense ? document.getElementById('gExpenseCat').value : null,
+            title: isSecret ? core.encryptSecret(title, core.currentPin) : title,
+            price: isSecret ? (priceRaw ? core.encryptSecret(priceRaw, core.currentPin) : '') : priceRaw,
+            isApprox,
+            deliveryDate: isExpense ? '' : deliveryDate,
+            url: isSecret ? (urlRaw ? core.encryptSecret(urlRaw, core.currentPin) : '') : urlRaw,
+            image: isSecret ? (imgRaw ? core.encryptSecret(imgRaw, core.currentPin) : '') : imgRaw,
+            comments: isSecret ? (commRaw ? core.encryptSecret(commRaw, core.currentPin) : '') : commRaw,
+            isSecret,
+            paidByUs,
+            recipients: recips,
+            froms,
+            event: ev,
+            round: roundVal,
+            state,
+            createdBy: isSecret ? core.currentUser : (existingId ? (core.data.gifts.find(x => x.id === existingId)?.createdBy || 'Familiar') : 'Familiar'),
+            updatedAt: Date.now()
+        };
+
+        const idx = core.data.gifts.findIndex(x => x.id === id);
+        if (idx > -1) core.data.gifts[idx] = obj;
+        else core.data.gifts.unshift(obj);
+
+        core.saveLocal();
+        core.closeModal('giftModal');
+        core.renderAll();
+    },
+
+    duplicateGift: () => {
+        core.isDuplicating = true;
+        document.getElementById('giftId').value = '';
+        document.getElementById('modalTitle').innerText = 'Duplicar Element 📋';
+        document.getElementById('dupBanner')?.classList.remove('hidden');
+        document.getElementById('gState').value = 'Idea';
+        document.getElementById('btnDuplicate')?.classList.add('hidden');
+        document.getElementById('btnDelete')?.classList.add('hidden');
+        core.toggleDeliveryField();
+    },
+
+    deleteGift: () => {
+        const id = document.getElementById('giftId').value;
+        if (!id || !confirm('Segur que vols eliminar aquest element?')) return;
+        core.data.gifts = core.data.gifts.filter(x => x.id !== id);
+        if (!core.data.deletedIds) core.data.deletedIds = [];
+        if (!core.data.deletedIds.includes(id)) core.data.deletedIds.push(id);
+        core.saveLocal();
+        core.closeModal('giftModal');
+        core.renderAll();
+    },
+
+    /* --- [6] SESSIÓ PIN (TOP SECRET), CONFIGURACIÓ I WHATSAPP --- */
+    openUnlockModal: () => {
+        const cfg = core.getConfig();
+        const sel = document.getElementById('unlockUser');
+        if (sel) {
+            sel.innerHTML = cfg.parents.map(p => `<option value="${core.escapeHtml(p)}">${core.escapeHtml(p)}</option>`).join('');
+        }
+        document.getElementById('unlockPin').value = '';
+        document.getElementById('unlockModal').style.display = 'block';
+        setTimeout(() => document.getElementById('unlockPin')?.focus(), 80);
+    },
+
+    unlock: () => {
+        const user = document.getElementById('unlockUser').value;
+        const pin = document.getElementById('unlockPin').value.trim();
+        if (!pin) {
+            alert('Introdueix el teu PIN.');
+            return;
+        }
+        if (!core.data.pins) core.data.pins = {};
+
+        if (!core.data.pins[user]) {
+            if (!confirm(`És la primera vegada que configures un PIN per a ${user}. Vols desar aquest PIN per xifrar els teus regals Top Secret?`)) return;
+            core.data.pins[user] = core.encryptSecret('OK_' + user, pin);
+            core.saveLocal();
+        } else {
+            const check = core.decryptSecret(core.data.pins[user], pin);
+            if (check !== 'OK_' + user) {
+                alert('PIN incorrecte.');
+                return;
+            }
+        }
+
+        core.currentUser = user;
+        core.currentPin = pin;
+        document.getElementById('userStatus').innerText = `🔓 ${user}`;
+        document.getElementById('btnUnlock').classList.add('hidden');
+        document.getElementById('btnLock').classList.remove('hidden');
+        core.closeModal('unlockModal');
+        core.renderAll();
+    },
+
+    lock: () => {
+        core.currentUser = null;
+        core.currentPin = null;
+        document.getElementById('userStatus').innerText = '👨‍👩‍👧‍👧 Vista Familiar';
+        document.getElementById('btnUnlock').classList.remove('hidden');
+        document.getElementById('btnLock').classList.add('hidden');
+        core.renderAll();
+    },
+
+    openConfigModal: (tab = 'github') => {
         document.getElementById('ghOwner').value = core.ghConfig.owner || '';
-        document.getElementById('ghRepo').value = core.ghConfig.repo || 'nadal-dades';
+        document.getElementById('ghRepo').value = core.ghConfig.repo || '';
         document.getElementById('ghPath').value = core.ghConfig.path || 'dades.json';
         document.getElementById('ghToken').value = core.ghConfig.token || '';
 
@@ -734,167 +1790,219 @@ export const core = {
         document.getElementById('cfgBigTioName').value = cfg.bigTioName;
         document.getElementById('cfgRounds').value = cfg.rounds.join(', ');
 
-        core.switchConfigTab(defaultTab);
+        const expCatsEl = document.getElementById('cfgExpenseCats');
+        if (expCatsEl) expCatsEl.value = core.getExpenseCategories().join(', ');
+
+        core.switchConfigTab(tab);
         document.getElementById('configModal').style.display = 'block';
     },
 
-    switchConfigTab: (tabName) => {
-        core.activeConfigTab = tabName;
-        ['Github', 'Family'].forEach(t => {
-            const lower = t.toLowerCase();
-            document.getElementById('tabCfg' + t).classList.toggle('hidden', lower !== tabName);
-            document.getElementById('tabBtnCfg' + t).classList.toggle('active', lower === tabName);
-        });
+    switchConfigTab: (tab) => {
+        document.getElementById('tabBtnCfgGithub')?.classList.toggle('active', tab === 'github');
+        document.getElementById('tabBtnCfgFamily')?.classList.toggle('active', tab === 'family');
+        document.getElementById('tabCfgGithub')?.classList.toggle('hidden', tab !== 'github');
+        document.getElementById('tabCfgFamily')?.classList.toggle('hidden', tab !== 'family');
     },
 
     saveGithubConfig: async () => {
         core.ghConfig = {
             owner: document.getElementById('ghOwner').value.trim(),
-            repo: document.getElementById('ghRepo').value.trim() || 'nadal-dades',
+            repo: document.getElementById('ghRepo').value.trim(),
             path: document.getElementById('ghPath').value.trim() || 'dades.json',
             token: document.getElementById('ghToken').value.trim()
         };
         core.persistGithubConfig();
-        if (window.location.hash.startsWith('#setup=')) {
-            history.replaceState(null, '', window.location.pathname);
-        }
-        core.ghSha = null;
-        core.ghEtag = null;
         core.closeModal('configModal');
-
-        if (core.isGithubConfigured()) {
-            const ok = await core.pullFromGithub(false);
-            const hasLocalContent = core.data.gifts.length > 0 || Object.keys(core.data.advent || {}).length > 0 || (core.data.adventPool || []).length > 0;
-            if (ok && core.ghSha === null && hasLocalContent) await core.pushToGithub();
+        if (core.hasGithubConfig()) {
+            core.ghEtag = null;
+            await core.syncFromGithub(false);
             core.startPolling();
         } else {
-            core.setCloudStatus('local', 'Mode Local (Núvol no configurat)');
+            core.updateCloudBadge('local');
         }
     },
 
     saveFamilyConfig: () => {
-        const splitClean = (str) => str.split(',').map(s => s.trim()).filter(Boolean);
-        const parents = splitClean(document.getElementById('cfgParents').value);
-        const casa = splitClean(document.getElementById('cfgCasa').value);
-
-        if (parents.length === 0 || casa.length === 0) {
-            return alert("Cal posar almenys un usuari amb PIN i els membres de casa.");
-        }
+        const expCatsEl = document.getElementById('cfgExpenseCats');
+        const expenseCategories = expCatsEl
+            ? core.parseCommaList(expCatsEl.value)
+            : core.getExpenseCategories();
 
         core.data.config = {
-            parents,
-            casaMembers: casa,
-            dir1Name: document.getElementById('cfgDir1Name').value.trim() || 'Família 1',
-            dir1Members: splitClean(document.getElementById('cfgDir1Members').value),
-            dir2Name: document.getElementById('cfgDir2Name').value.trim() || 'Família 2',
-            dir2Members: splitClean(document.getElementById('cfgDir2Members').value),
-            ext1Name: document.getElementById('cfgExt1Name').value.trim() || 'Família Extensa 1',
-            ext1Members: splitClean(document.getElementById('cfgExt1Members').value),
-            ext2Name: document.getElementById('cfgExt2Name').value.trim() || 'Família Extensa 2',
-            ext2Members: splitClean(document.getElementById('cfgExt2Members').value),
-            bigTioName: document.getElementById('cfgBigTioName').value.trim() || '🪵 Tió Família',
-            rounds: splitClean(document.getElementById('cfgRounds').value)
+            parents: core.parseCommaList(document.getElementById('cfgParents').value),
+            casaMembers: core.parseCommaList(document.getElementById('cfgCasa').value),
+            dir1Name: document.getElementById('cfgDir1Name').value.trim() || DEFAULT_CONFIG.dir1Name,
+            dir1Members: core.parseCommaList(document.getElementById('cfgDir1Members').value),
+            dir2Name: document.getElementById('cfgDir2Name').value.trim() || DEFAULT_CONFIG.dir2Name,
+            dir2Members: core.parseCommaList(document.getElementById('cfgDir2Members').value),
+            ext1Name: document.getElementById('cfgExt1Name').value.trim() || DEFAULT_CONFIG.ext1Name,
+            ext1Members: core.parseCommaList(document.getElementById('cfgExt1Members').value),
+            ext2Name: document.getElementById('cfgExt2Name').value.trim() || DEFAULT_CONFIG.ext2Name,
+            ext2Members: core.parseCommaList(document.getElementById('cfgExt2Members').value),
+            bigTioName: document.getElementById('cfgBigTioName').value.trim() || DEFAULT_CONFIG.bigTioName,
+            rounds: core.parseCommaList(document.getElementById('cfgRounds').value),
+            expenseCategories: expenseCategories.length ? expenseCategories : [...DEFAULT_EXPENSE_CATEGORIES]
         };
-
-        core.buildDynamicUI();
         core.saveLocal();
+        core.applyConfigToUI();
         core.closeModal('configModal');
         core.renderAll();
     },
 
-    exportData: () => {
-        const str = JSON.stringify(core.data, null, 2);
-        const blob = new Blob([str], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = `nadal_regals_${Date.now()}.json`; a.click();
+    openShareModal: () => {
+        const cfg = core.getConfig();
+        core.buildCheckboxGroups('sharePeopleContainer', {
+            'Casa': cfg.casaMembers,
+            [cfg.dir1Name]: cfg.dir1Members,
+            [cfg.dir2Name]: cfg.dir2Members,
+            [cfg.ext1Name]: cfg.ext1Members,
+            [cfg.ext2Name]: cfg.ext2Members
+        }, core.getKidsList());
+
+        document.querySelectorAll('#sharePeopleContainer input[type="checkbox"]').forEach(cb => {
+            cb.onchange = () => core.generateShareText();
+        });
+        core.generateShareText();
+        document.getElementById('shareModal').style.display = 'block';
     },
 
-    importData: (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            try {
-                const imported = JSON.parse(ev.target.result);
-                if (!imported.budgets) imported.budgets = {};
-                if (!imported.lastYear) imported.lastYear = {};
-                if (!imported.pins) imported.pins = {};
-                if (!imported.deletedIds) imported.deletedIds = [];
-                if (!imported.advent) imported.advent = {};
-                if (!imported.adventPool) imported.adventPool = [];
-
-                const wasMissingConfig = !imported.config;
-                if (wasMissingConfig) imported.config = core.inferConfigFromLegacyData(imported);
-
-                core.data = imported;
-                core.buildDynamicUI();
-                core.saveLocal();
-                core.renderAll();
-
-                if (wasMissingConfig) {
-                    alert("Dades carregades! Revisa l'ordre dels grups familiars si cal. 🎅");
-                    core.openConfigModal('family');
-                } else {
-                    alert("Dades carregades i sincronitzades a la perfecció! 🎅");
-                }
-            } catch (err) { alert("Error llegint l'arxiu."); }
-        };
-        reader.readAsText(file);
-        e.target.value = '';
+    selectSharePreset: (preset) => {
+        const cfg = core.getConfig();
+        const kids = core.getKidsList();
+        document.querySelectorAll('#sharePeopleContainer input[type="checkbox"]').forEach(cb => {
+            if (preset === 'kids') cb.checked = kids.includes(cb.value);
+            else if (preset === 'casa') cb.checked = cfg.casaMembers.includes(cb.value);
+            else cb.checked = false;
+        });
+        core.generateShareText();
     },
 
-    openUnlockModal: () => document.getElementById('unlockModal').style.display = 'block',
-    unlock: () => {
-        const u = document.getElementById('unlockUser').value;
-        const p = document.getElementById('unlockPin').value;
-        if (!p) return alert("Has de posar un PIN!");
+    generateShareText: () => {
+        const selectedPeople = Array.from(document.querySelectorAll('#sharePeopleContainer input:checked')).map(cb => cb.value);
+        const incIdeas = document.getElementById('shareIncIdeas')?.checked;
+        const incOurs = document.getElementById('shareIncConfirmedOurs')?.checked;
+        const incOthers = document.getElementById('shareIncConfirmedOthers')?.checked;
+        const incPrice = document.getElementById('shareIncPrice')?.checked;
+        const incUrl = document.getElementById('shareIncUrl')?.checked;
+        const incComments = document.getElementById('shareIncComments')?.checked;
+        const incEvent = document.getElementById('shareIncEvent')?.checked;
 
-        if (!core.data.pins[u]) {
-            core.data.pins[u] = p;
-            core.saveLocal();
-            alert(`PIN guardat per a ${u}. Si l'oblides, el pots llegir exportant l'arxiu.`);
-        } else if (core.data.pins[u] !== p) {
-            return alert("PIN incorrecte! 🛑");
+        const area = document.getElementById('shareTextArea');
+        if (!area) return;
+        if (selectedPeople.length === 0) {
+            area.value = '';
+            return;
         }
 
-        core.currentUser = u; core.pin = p;
-        document.getElementById('userStatus').innerHTML = `🕵️‍♂️ Sessió: <b>${u}</b>`;
-        document.getElementById('btnUnlock').classList.add('hidden');
-        document.getElementById('btnLock').classList.remove('hidden');
-        core.closeModal('unlockModal');
-        core.renderAll();
+        const lines = ['🎄 *Llista de Regals de Nadal*'];
+        let totalFound = 0;
+
+        selectedPeople.forEach(person => {
+            const matching = core.data.gifts.filter(g => {
+                if ((g.type || 'gift') !== 'gift' || g.isSecret) return false;
+                const d = core.resolveGiftDisplay(g);
+                if (!d.recips.includes(person)) return false;
+
+                if (g.state === 'Idea') return incIdeas;
+                if (d.isOtherHouse || g.state === 'Confirmat') return incOthers;
+                return incOurs;
+            });
+
+            if (matching.length === 0) return;
+            totalFound += matching.length;
+            lines.push(`\n👤 *${core.formatMemberLabel(person)}*`);
+
+            matching.forEach(g => {
+                const d = core.resolveGiftDisplay(g);
+                let line = `• ${d.titleDisplay}`;
+                if (incPrice && d.priceVal > 0) line += ` (${g.isApprox ? '~' : ''}${d.priceVal} €)`;
+                if (incEvent && g.event) line += ` [${g.event}]`;
+                if (d.isOtherHouse && d.froms.length > 0) line += ` — _${d.froms.join(', ')}_`;
+                lines.push(line);
+                if (incComments && d.commentsDisplay) lines.push(`  📝 ${d.commentsDisplay}`);
+                if (incUrl && d.shopUrl) lines.push(`  🔗 ${d.shopUrl}`);
+            });
+        });
+
+        area.value = totalFound > 0 ? lines.join('\n') : 'No hi ha cap regal que compleixi aquests filtres.';
     },
 
-    lock: () => {
-        core.currentUser = null; core.pin = null;
-        document.getElementById('userStatus').innerHTML = `👨‍👩‍👧‍👧 Vista Familiar`;
-        document.getElementById('btnUnlock').classList.remove('hidden');
-        document.getElementById('btnLock').classList.add('hidden');
-        document.getElementById('unlockPin').value = '';
-        core.renderAll();
+    copyShareText: () => {
+        const text = document.getElementById('shareTextArea').value;
+        if (!text) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = document.getElementById('btnCopyShare');
+                if (btn) {
+                    const orig = btn.innerText;
+                    btn.innerText = '✅ Copiat!';
+                    setTimeout(() => { btn.innerText = orig; }, 1600);
+                }
+            });
+        } else {
+            document.getElementById('shareTextArea').select();
+            document.execCommand('copy');
+        }
     },
 
-    /* --- [7] NAVEGACIÓ ENTRE VISTES, MODALS, TECLAT I SWIPE-DOWN REFRESH --- */
+    exportData: () => {
+        const blob = new Blob([JSON.stringify(core.data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `nadal-tracker-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    },
+
+    importData: (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const imported = JSON.parse(e.target.result);
+                if (!confirm('Això substituirà les dades locals actuals per les del fitxer importat. Continuar?')) return;
+                core.data = imported;
+                core.migrateExpenseCategories();
+                core.saveLocal(true);
+                core.applyConfigToUI();
+                core.renderAll();
+            } catch (err) {
+                alert('El fitxer seleccionat no és un JSON vàlid.');
+            }
+        };
+        reader.readAsText(file);
+        event.target.value = '';
+    },
+
+    /* --- [7] NAVEGACIÓ ENTRE PESTANYES, PWA, SMART-STICKY I ARRENCADA --- */
+    toggleCloudDrawer: (forceState = null) => {
+        const drawer = document.getElementById('cloudDrawer');
+        if (!drawer) return;
+        if (forceState === true) drawer.classList.remove('hidden');
+        else if (forceState === false) drawer.classList.add('hidden');
+        else drawer.classList.toggle('hidden');
+    },
+
+    closeModal: (id) => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    },
+
     switchMainView: (view) => {
         core.activeMainView = view;
-
         const navMap = {
             list: 'navBtnList',
             board: 'navBtnBoard',
             advent: 'navBtnAdvent',
             santallucia: 'navBtnSantaLlucia'
         };
-        Object.entries(navMap).forEach(([k, btnId]) => {
-            const el = document.getElementById(btnId);
-            if (el) el.classList.toggle('active', k === view);
-        });
 
-        Object.entries(core.views).forEach(([key, v]) => {
-            if (v && v.sectionId) {
-                const sec = document.getElementById(v.sectionId);
-                if (sec) sec.classList.toggle('hidden', key !== view);
-            }
+        Object.entries(core.views).forEach(([key, mod]) => {
+            const sec = document.getElementById(mod.sectionId);
+            if (sec) sec.classList.toggle('hidden', key !== view);
+            document.getElementById(navMap[key])?.classList.toggle('active', key === view);
         });
 
         const wideViews = ['list', 'board', 'advent'];
@@ -902,996 +2010,151 @@ export const core = {
         mainCont.classList.toggle('wide-view', wideViews.includes(view));
         if (view !== 'list') mainCont.classList.remove('kanban-wide');
 
-        const activeViewObj = core.views[view];
-        const hideFab = activeViewObj && typeof activeViewObj.hideFloatingBtn === 'function' ? activeViewObj.hideFloatingBtn() : false;
-        document.getElementById('floatingAddBtn').classList.toggle('hidden', hideFab);
+        const activeMod = core.views[view];
+        const hideBtn = activeMod && typeof activeMod.hideFloatingBtn === 'function' ? activeMod.hideFloatingBtn() : false;
+        document.getElementById('floatingAddBtn')?.classList.toggle('hidden', hideBtn);
 
-        document.getElementById('appHeader').classList.remove('header-hidden');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        core.renderAll();
+    },
 
-        if (activeViewObj && typeof activeViewObj.render === 'function') activeViewObj.render();
+    applyConfigToUI: () => {
+        const cfg = core.getConfig();
+        Object.values(core.views).forEach(mod => {
+            if (typeof mod.onConfigChange === 'function') mod.onConfigChange(cfg);
+        });
     },
 
     renderAll: () => {
-        core.updateBudgetHeader();
-        if (core.views.list && typeof core.views.list.renderFilterPills === 'function') {
-            core.views.list.renderFilterPills();
-        }
-        if (core.views.list && typeof core.views.list.render === 'function') {
-            core.views.list.render();
-        }
-        if (core.activeMainView !== 'list' && core.views[core.activeMainView] && typeof core.views[core.activeMainView].render === 'function') {
-            core.views[core.activeMainView].render();
-        }
+        core.updateCountdown();
+        core.updateHeaderBudgets();
+        const activeMod = core.views[core.activeMainView];
+        if (activeMod && typeof activeMod.render === 'function') activeMod.render();
     },
 
-    setupSmartHeader: () => {
-        const header = document.getElementById('appHeader');
-        if (!header) return;
-
-        let lastScrollY = window.scrollY || 0;
-        let ticking = false;
-
-        window.addEventListener('scroll', () => {
-            if (!ticking) {
-                window.requestAnimationFrame(() => {
-                    const currentY = Math.max(0, window.scrollY || 0);
-                    const drawerOpen = !document.getElementById('cloudDrawer').classList.contains('hidden');
-                    const anyModalOpen = ALL_MODAL_IDS.some(id => document.getElementById(id).style.display === 'block');
-
-                    if (currentY <= 15 || drawerOpen || anyModalOpen) {
-                        header.classList.remove('header-hidden');
-                    } else if (currentY > lastScrollY + 10 && currentY > 80) {
-                        header.classList.add('header-hidden');
-                    } else if (currentY < lastScrollY - 8) {
-                        header.classList.remove('header-hidden');
-                    }
-
-                    lastScrollY = currentY;
-                    ticking = false;
-                });
-                ticking = true;
-            }
-        }, { passive: true });
-
-        document.addEventListener('click', (e) => {
-            const drawer = document.getElementById('cloudDrawer');
-            if (!drawer.classList.contains('hidden') && !header.contains(e.target)) {
-                drawer.classList.add('hidden');
-            }
-        });
-    },
-
-    setupPullToRefresh: () => {
-        const indicator = document.getElementById('pullRefreshIndicator');
-        let startY = 0;
-        let pulling = false;
-        let triggered = false;
-
-        window.addEventListener('touchstart', (e) => {
-            if (window.scrollY > 2) return;
-            const anyModalOpen = ALL_MODAL_IDS.some(id => document.getElementById(id).style.display === 'block');
-            if (anyModalOpen || !e.touches || e.touches.length !== 1) return;
-            startY = e.touches[0].clientY;
-            pulling = true;
-            triggered = false;
-        }, { passive: true });
-
-        window.addEventListener('touchmove', (e) => {
-            if (!pulling || window.scrollY > 2) return;
-            const deltaY = e.touches[0].clientY - startY;
-            if (deltaY > 18 && !triggered && indicator) {
-                indicator.classList.remove('hidden');
-                indicator.innerText = deltaY > 85 ? '🔄 Deixa anar per sincronitzar...' : '⬇️ Estira avall per sincronitzar';
-            }
-        }, { passive: true });
-
-        window.addEventListener('touchend', async (e) => {
-            if (!pulling) return;
-            pulling = false;
-            const endY = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientY : startY;
-            const deltaY = endY - startY;
-            if (deltaY > 85 && window.scrollY <= 2) {
-                triggered = true;
-                if (indicator) {
-                    indicator.classList.remove('hidden');
-                    indicator.innerText = '🟡 Sincronitzant...';
-                }
-                await core.manualSync();
-            }
-            if (indicator) {
-                setTimeout(() => indicator.classList.add('hidden'), 600);
-            }
-        }, { passive: true });
-    },
-
-    toggleCloudDrawer: (forceState = null) => {
-        const drawer = document.getElementById('cloudDrawer');
-        if (forceState === true) drawer.classList.remove('hidden');
-        else if (forceState === false) drawer.classList.add('hidden');
-        else drawer.classList.toggle('hidden');
-    },
-
-    setupModalBackdropClicks: () => {
-        ALL_MODAL_IDS.forEach(modalId => {
-            const el = document.getElementById(modalId);
-            if (!el) return;
-            let downOnBackdrop = false;
-            el.addEventListener('mousedown', (e) => { downOnBackdrop = (e.target === el); });
-            el.addEventListener('mouseup', (e) => {
-                if (downOnBackdrop && e.target === el) core.handleBackdropClick(modalId);
-                downOnBackdrop = false;
-            });
-        });
-    },
-
-    handleBackdropClick: (modalId) => {
-        if (modalId === 'unlockModal' || modalId === 'shareModal' || modalId === 'configModal') {
-            core.closeModal(modalId);
-            return;
-        }
-        if (modalId === 'budgetsModal') {
-            if (core.activeBudgetTab === 'limits') core.saveBudgets(true);
-            else if (core.activeBudgetTab === 'lastYear') core.saveLastYear(true);
-            else core.closeModal('budgetsModal');
-            return;
-        }
-        if (modalId === 'giftModal') {
-            const id = document.getElementById('giftId').value;
-            const title = document.getElementById('gTitle').value.trim();
-            if (!id && !title) {
-                core.closeModal('giftModal');
-                return;
-            }
-            core.saveGift();
-            return;
-        }
-        if (modalId === 'adventModal' && core.views.advent && typeof core.views.advent.handleBackdrop === 'function') {
-            core.views.advent.handleBackdrop();
-        }
-    },
-
-    setupKeyboardShortcuts: () => {
-        document.addEventListener('keydown', (e) => {
-            const openModalId = ALL_MODAL_IDS.find(id => {
-                const el = document.getElementById(id);
-                return el && el.style.display === 'block';
-            });
-            if (!openModalId) return;
-
-            if (e.key === 'Escape') {
-                e.preventDefault();
-                core.closeModal(openModalId);
-                return;
-            }
-
-            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-                e.preventDefault();
-                if (openModalId === 'giftModal') core.saveGift();
-                else if (openModalId === 'adventModal' && core.views.advent) core.views.advent.saveModal();
-                else if (openModalId === 'budgetsModal') {
-                    if (core.activeBudgetTab === 'limits') core.saveBudgets(true);
-                    else if (core.activeBudgetTab === 'lastYear') core.saveLastYear(true);
-                    else core.closeModal('budgetsModal');
-                } else if (openModalId === 'configModal') {
-                    if (core.activeConfigTab === 'github') core.saveGithubConfig();
-                    else core.saveFamilyConfig();
-                } else if (openModalId === 'unlockModal') core.unlock();
-                else if (openModalId === 'shareModal') {
-                    core.copyShareText();
-                    core.closeModal('shareModal');
-                }
-            }
-        });
-    },
-
-    renderCountdown: () => {
+    updateCountdown: () => {
         const el = document.getElementById('xmasCountdown');
         if (!el) return;
-
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const year = core.getChristmasYear();
+        const xmas = new Date(year, 11, 25);
+        const reis = new Date(year + 1, 0, 6);
 
-        const diffDays = (target) => Math.round((target - today) / 86400000);
-        const dTio = diffDays(new Date(year, 11, 24));
-        const dNadal = diffDays(new Date(year, 11, 25));
-        const dReis = diffDays(new Date(year + 1, 0, 6));
+        const diffXmas = Math.round((xmas - today) / 86400000);
+        const diffReis = Math.round((reis - today) / 86400000);
 
-        if (dTio === 0) el.innerText = "🪵 Avui fem cagar el Tió!";
-        else if (dNadal === 0) el.innerText = "🎄 Bon Nadal a tota la família!";
-        else if (dReis === 0) el.innerText = "👑 Feliç Dia de Reis!";
-        else if (dTio > 0) el.innerText = `⏳ ${dTio} dies per al Tió · ${dNadal} per Nadal · ${dReis} per Reis`;
-        else if (dReis > 0) el.innerText = `⏳ Queden ${dReis} dies per a l'arribada dels Reis 👑`;
-        else el.innerText = "✨ Planificació Nadalenca Activa";
+        if (diffXmas > 0) el.innerText = `🎄 Faltan ${diffXmas} ${diffXmas === 1 ? 'dia' : 'dies'} per Nadal`;
+        else if (diffXmas === 0) el.innerText = '🎄 Bon Nadal! ✨';
+        else if (diffReis > 0) el.innerText = `👑 Falten ${diffReis} ${diffReis === 1 ? 'dia' : 'dies'} per Reis`;
+        else if (diffReis === 0) el.innerText = '👑 Feliç Dia de Reis! ✨';
+        else el.innerText = `🎄 Planificant Nadal ${year + 1}`;
     },
 
-    generatePngIcons: () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = 180;
-        canvas.height = 180;
-        const ctx = canvas.getContext('2d');
-
-        ctx.fillStyle = '#b3000c';
-        ctx.fillRect(0, 0, 180, 180);
-
-        ctx.font = '105px -apple-system, BlinkMacSystemFont, "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('🎄', 90, 98);
-
-        const appleIcon = document.getElementById('appleTouchIcon');
-        if (appleIcon) appleIcon.href = canvas.toDataURL('image/png');
+    generateAppleTouchIcon: () => {
+        const link = document.getElementById('appleTouchIcon');
+        if (!link) return;
+        try {
+            const c = document.createElement('canvas');
+            c.width = 180;
+            c.height = 180;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#b3000c';
+            ctx.fillRect(0, 0, 180, 180);
+            ctx.font = '112px serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('🎄', 90, 98);
+            link.href = c.toDataURL('image/png');
+        } catch (e) {}
     },
 
-    /* --- [8] CÀLCUL ECONÒMIC, PRESSUPOSTOS, ANY PASSAT I COMPARTIR WHATSAPP --- */
-    calculateSpendingBreakdown: () => {
-        const budgetCats = core.getBudgetCategories();
-        const spentByCat = {};
-        const approxByCat = {};
-        budgetCats.forEach(c => {
-            spentByCat[c] = 0;
-            approxByCat[c] = 0;
-        });
+    setupUxInteractions: () => {
+        // 1. Smart Sticky Header
+        let lastY = window.scrollY;
+        const header = document.getElementById('appHeader');
+        window.addEventListener('scroll', () => {
+            if (!header) return;
+            const currY = window.scrollY;
+            if (currY > 90 && currY > lastY + 8) header.classList.add('header-hidden');
+            else if (currY < lastY - 8 || currY <= 40) header.classList.remove('header-hidden');
+            lastY = currY;
+        }, { passive: true });
 
-        const spentByExpenseCat = {};
-        const pendingByExpenseCat = {};
-        core.expenseCategories.forEach(ec => {
-            spentByExpenseCat[ec] = 0;
-            pendingByExpenseCat[ec] = 0;
-        });
+        // 2. Swipe-down refresh al mòbil
+        let touchStartY = 0;
+        let pulling = false;
+        const ind = document.getElementById('pullRefreshIndicator');
 
-        let totalSpent = 0;
-        let totalSpentDefinitive = 0;
-        let totalSpentApprox = 0;
+        window.addEventListener('touchstart', (e) => {
+            if (window.scrollY === 0 && e.touches.length === 1) {
+                touchStartY = e.touches[0].clientY;
+                pulling = true;
+            }
+        }, { passive: true });
 
-        core.data.gifts.forEach(g => {
-            const isExpense = (g.type === 'expense');
-            const isOthersSecret = (!isExpense && g.isSecret && g.createdBy !== core.currentUser);
-            const priceVal = isOthersSecret ? 0 : parseFloat(g.isSecret ? core.decrypt(g.price, core.pin) : g.price) || 0;
-            const isPaidByUs = isExpense ? true : (g.hasOwnProperty('paidByUs') ? g.paidByUs : (g.from === 'Nosaltres' || !g.from));
-            const isApprox = Boolean(g.isApprox);
+        window.addEventListener('touchmove', (e) => {
+            if (!pulling || !ind) return;
+            const delta = e.touches[0].clientY - touchStartY;
+            if (delta > 55) {
+                ind.classList.remove('hidden');
+                ind.innerText = delta > 105 ? '🔄 Deixa anar per sincronitzar' : '⬇️ Estira avall per sincronitzar';
+            }
+        }, { passive: true });
 
-            if (isExpense) {
-                const expCat = g.expenseCat || "🎉 Altres despeses nadalenques";
-                if (spentByExpenseCat[expCat] === undefined) spentByExpenseCat[expCat] = 0;
-                if (pendingByExpenseCat[expCat] === undefined) pendingByExpenseCat[expCat] = 0;
+        window.addEventListener('touchend', (e) => {
+            if (!pulling) return;
+            pulling = false;
+            const delta = (e.changedTouches[0]?.clientY || 0) - touchStartY;
+            if (ind) ind.classList.add('hidden');
+            if (delta > 105) core.manualSync();
+        }, { passive: true });
 
-                if (g.state !== 'Idea' && g.state !== 'Decidit' && priceVal > 0) {
-                    totalSpent += priceVal;
-                    if (isApprox) totalSpentApprox += priceVal;
-                    else totalSpentDefinitive += priceVal;
-
-                    spentByCat["🎄 Altres Despeses (Àpats, Deco...)"] += priceVal;
-                    if (isApprox) approxByCat["🎄 Altres Despeses (Àpats, Deco...)"] += priceVal;
-                    spentByExpenseCat[expCat] += priceVal;
-                } else if ((g.state === 'Idea' || g.state === 'Decidit') && priceVal > 0) {
-                    pendingByExpenseCat[expCat] += priceVal;
-                }
+        // 3. Tancar modals en clicar fora i dreceres de teclat
+        window.addEventListener('click', (e) => {
+            if (!e.target.classList.contains('modal')) return;
+            if (e.target.id === 'adventModal' && core.views.advent) {
+                core.views.advent.handleBackdrop();
             } else {
-                if (g.state !== 'Idea' && g.state !== 'Decidit' && g.state !== 'Confirmat' && isPaidByUs && priceVal > 0) {
-                    totalSpent += priceVal;
-                    if (isApprox) totalSpentApprox += priceVal;
-                    else totalSpentDefinitive += priceVal;
-
-                    const recips = g.recipients || (g.recipient ? [g.recipient] : []);
-                    if (recips.length > 0) {
-                        const share = priceVal / recips.length;
-                        recips.forEach(person => {
-                            const cat = core.mapPersonToBudgetCat(person);
-                            spentByCat[cat] = (spentByCat[cat] || 0) + share;
-                            if (isApprox) approxByCat[cat] = (approxByCat[cat] || 0) + share;
-                        });
-                    } else {
-                        spentByCat["Altres / Amics"] += priceVal;
-                        if (isApprox) approxByCat["Altres / Amics"] += priceVal;
-                    }
-                }
+                core.closeModal(e.target.id);
             }
         });
 
-        const adventCat = "🗓️ Calendari d'Advent";
-        const allAdventItems = [...Object.values(core.data.advent || {}), ...(core.data.adventPool || [])];
-        allAdventItems.forEach(item => {
-            if (!item || !item.title || !item.title.trim()) return;
-            const p = parseFloat(item.price) || 0;
-            if (p <= 0) return;
-            const isApprox = Boolean(item.isApprox);
-
-            if (item.state === 'Comprat') {
-                totalSpent += p;
-                if (isApprox) totalSpentApprox += p;
-                else totalSpentDefinitive += p;
-
-                spentByCat["🎄 Altres Despeses (Àpats, Deco...)"] += p;
-                if (isApprox) approxByCat["🎄 Altres Despeses (Àpats, Deco...)"] += p;
-                spentByExpenseCat[adventCat] = (spentByExpenseCat[adventCat] || 0) + p;
-            } else {
-                pendingByExpenseCat[adventCat] = (pendingByExpenseCat[adventCat] || 0) + p;
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.modal').forEach(m => { m.style.display = 'none'; });
+            } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                if (document.getElementById('giftModal')?.style.display === 'block') core.saveGift();
+                else if (document.getElementById('adventModal')?.style.display === 'block' && core.views.advent) core.views.advent.saveModal();
             }
         });
 
-        return { totalSpent, totalSpentDefinitive, totalSpentApprox, spentByCat, approxByCat, spentByExpenseCat, pendingByExpenseCat };
-    },
-
-    updateBudgetHeader: () => {
-        let previst = 0;
-        Object.values(core.data.budgets || {}).forEach(v => previst += (parseFloat(v) || 0));
-        const { totalSpent, totalSpentDefinitive, totalSpentApprox } = core.calculateSpendingBreakdown();
-
-        const execPct = previst > 0 ? Math.round((totalSpent / previst) * 100) : 0;
-        document.getElementById('budgetPrevist').innerText = previst.toFixed(0) + ' €';
-        document.getElementById('budgetGastat').innerText = totalSpent.toFixed(2) + ' €';
-
-        const subEl = document.getElementById('budgetGastatSub');
-        if (totalSpentApprox > 0) {
-            subEl.innerText = `Def: ${totalSpentDefinitive.toFixed(0)}€ · ~Aprox: ${totalSpentApprox.toFixed(0)}€`;
-            subEl.classList.remove('hidden');
-        } else {
-            subEl.classList.add('hidden');
-        }
-
-        document.getElementById('budgetPct').innerText = execPct + '%';
-        document.getElementById('headerProgressBar').style.width = Math.min(execPct, 100) + '%';
-    },
-
-    openBudgetsModal: (defaultTab = 'ratios') => {
-        const budgetCats = core.getBudgetCategories();
-        const contLimits = document.getElementById('budgetInputsContainer');
-        contLimits.innerHTML = '';
-        budgetCats.forEach((cat, i) => {
-            const val = core.data.budgets[cat] || '';
-            contLimits.innerHTML += `
-                <div class="budget-row">
-                    <span>${cat}</span>
-                    <div><input type="number" id="b_cat_${i}" value="${val}" placeholder="0"> €</div>
-                </div>`;
-        });
-
-        const contLast = document.getElementById('lastYearInputsContainer');
-        contLast.innerHTML = '';
-        budgetCats.forEach((cat, i) => {
-            const val = core.data.lastYear[cat] || '';
-            contLast.innerHTML += `
-                <div class="budget-row">
-                    <span>${cat}</span>
-                    <div><input type="number" id="ly_cat_${i}" value="${val}" placeholder="0"> €</div>
-                </div>`;
-        });
-
-        core.renderRatiosTab();
-        core.switchBudgetTab(defaultTab);
-        document.getElementById('budgetsModal').style.display = 'block';
-    },
-
-    switchBudgetTab: (tabName) => {
-        core.activeBudgetTab = tabName;
-        ['Ratios', 'Limits', 'LastYear'].forEach(t => {
-            const lower = t.charAt(0).toLowerCase() + t.slice(1);
-            document.getElementById('tab' + t).classList.toggle('hidden', lower !== tabName);
-            document.getElementById('tabBtn' + t).classList.toggle('active', lower === tabName);
+        window.addEventListener('online', () => {
+            if (localStorage.getItem('nadalPendingSync') === '1') core.syncFromGithub(false);
         });
     },
 
-    renderRatiosTab: () => {
-        const budgetCats = core.getBudgetCategories();
-        const { totalSpent, totalSpentDefinitive, totalSpentApprox, spentByCat, approxByCat, spentByExpenseCat, pendingByExpenseCat } = core.calculateSpendingBreakdown();
-        let totalBudget = 0;
-        Object.values(core.data.budgets || {}).forEach(v => totalBudget += (parseFloat(v) || 0));
+    init: async () => {
+        core.generateAppleTouchIcon();
+        const fromMagic = core.parseMagicLink();
+        if (!fromMagic) core.loadGithubConfig();
+        core.loadLocalData();
 
-        let totalLastYear = 0;
-        Object.values(core.data.lastYear || {}).forEach(v => totalLastYear += (parseFloat(v) || 0));
-
-        const globalPct = totalBudget > 0 ? ((totalSpent / totalBudget) * 100).toFixed(1) : 0;
-        const diffTotal = totalSpent - totalLastYear;
-        const diffTotalPct = totalLastYear > 0 ? ((diffTotal / totalLastYear) * 100).toFixed(1) : null;
-
-        let summaryHtml = `
-            <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-                <span><b>Execució Global:</b> ${totalSpent.toFixed(2)} € / ${totalBudget.toFixed(2)} €</span>
-                <span style="font-weight:bold; color:${globalPct > 100 ? 'var(--c-red)' : 'var(--c-green)'};">${globalPct}%</span>
-            </div>
-            <div style="display:flex; justify-content:space-between; font-size:0.85em; color:#555; margin-bottom:6px;">
-                <span>✅ Definitiu: <b>${totalSpentDefinitive.toFixed(2)} €</b></span>
-                <span>~ Aproximat: <b>${totalSpentApprox.toFixed(2)} €</b></span>
-            </div>
-        `;
-        if (totalLastYear > 0) {
-            const sign = diffTotal > 0 ? '+' : '';
-            const cls = diffTotal > 0 ? 'diff-up' : 'diff-down';
-            summaryHtml += `
-                <div style="border-top:1px solid #ddd; padding-top:6px; margin-top:6px; display:flex; justify-content:space-between;">
-                    <span><b>Vs. Any Passat (${totalLastYear.toFixed(2)} €):</b></span>
-                    <span class="${cls}">${sign}${diffTotal.toFixed(2)} € (${sign}${diffTotalPct}%)</span>
-                </div>
-            `;
-        } else {
-            summaryHtml += `<div style="font-size:0.8em; color:#666; margin-top:4px;">💡 Omple la pestanya "📅 Any Passat" per veure la comparativa anual.</div>`;
-        }
-        document.getElementById('ratiosSummaryBox').innerHTML = summaryHtml;
-
-        const listCont = document.getElementById('ratiosListContainer');
-        listCont.innerHTML = '';
-
-        budgetCats.forEach(cat => {
-            const spent = spentByCat[cat] || 0;
-            const approxPart = approxByCat[cat] || 0;
-            const limit = parseFloat(core.data.budgets[cat]) || 0;
-            const ly = parseFloat(core.data.lastYear[cat]) || 0;
-
-            if (spent === 0 && limit === 0 && ly === 0) return;
-
-            const pct = limit > 0 ? Math.round((spent / limit) * 100) : (spent > 0 ? 100 : 0);
-            const barWidth = Math.min(pct, 100);
-            const isOver = limit > 0 && spent > limit;
-
-            let lyHtml = '';
-            if (ly > 0) {
-                const d = spent - ly;
-                const sign = d > 0 ? '+' : '';
-                const cls = d > 0 ? 'diff-up' : 'diff-down';
-                lyHtml = `<span>Any passat: ${ly} € (<span class="${cls}">${sign}${d.toFixed(0)} €</span>)</span>`;
-            }
-
-            const approxNote = approxPart > 0 ? ` <span style="color:#9a7d0a; font-weight:normal; font-size:0.85em;">(incl. ~${approxPart.toFixed(0)}€ aprox.)</span>` : '';
-
-            listCont.innerHTML += `
-                <div class="ratio-card">
-                    <div class="ratio-top">
-                        <span>${cat}</span>
-                        <span>${spent.toFixed(2)} €${approxNote} ${limit > 0 ? '/ ' + limit + ' € (' + pct + '%)' : ''}</span>
-                    </div>
-                    ${limit > 0 ? `<div class="ratio-bar-bg"><div class="ratio-bar-fill ${isOver ? 'over' : ''}" style="width:${barWidth}%"></div></div>` : ''}
-                    <div class="ratio-details">
-                        <span>${limit > 0 ? (limit - spent >= 0 ? 'Queden: ' + (limit - spent).toFixed(2) + ' €' : 'Excedit: ' + Math.abs(limit - spent).toFixed(2) + ' €') : 'Sense límit fixat'}</span>
-                        ${lyHtml}
-                    </div>
-                </div>
-            `;
+        Object.values(core.views).forEach(mod => {
+            if (typeof mod.mount === 'function') mod.mount();
         });
 
-        const expCont = document.getElementById('expenseBreakdownContainer');
-        const totalExpensesSpent = spentByCat["🎄 Altres Despeses (Àpats, Deco...)"] || 0;
-        const allExpenseCats = Array.from(new Set([...core.expenseCategories, ...Object.keys(spentByExpenseCat)]));
-        const hasAnyExpenseActivity = totalExpensesSpent > 0 || Object.values(pendingByExpenseCat).some(v => v > 0);
+        core.applyConfigToUI();
+        core.setupUxInteractions();
+        core.switchMainView('list');
 
-        if (hasAnyExpenseActivity) {
-            let rowsHtml = '';
-            allExpenseCats.forEach(ec => {
-                const sp = spentByExpenseCat[ec] || 0;
-                const pend = pendingByExpenseCat[ec] || 0;
-                const sharePct = totalExpensesSpent > 0 ? Math.round((sp / totalExpensesSpent) * 100) : 0;
+        const lastEl = document.getElementById('lastSync');
+        if (lastEl && core.data.lastUpdate) lastEl.innerText = core.data.lastUpdate;
 
-                rowsHtml += `
-                    <div class="expense-detail-row" style="${sp === 0 && pend === 0 ? 'opacity:0.55;' : ''}">
-                        <div>
-                            <span>${ec}</span>
-                            ${pend > 0 ? `<span class="expense-cat-pending">⏳ Previst / Idees: ${pend.toFixed(2)} €</span>` : ''}
-                        </div>
-                        <div style="text-align:right;">
-                            <b>${sp.toFixed(2)} €</b>
-                            ${sp > 0 ? `<span style="font-size:0.8em; color:var(--c-green); margin-left:4px;">(${sharePct}%)</span>` : ''}
-                        </div>
-                    </div>
-                `;
-            });
-
-            expCont.innerHTML = `
-                <div class="expense-detail-box">
-                    <div class="expense-detail-title">
-                        <span>🎄 Detall Despeses Nadalenques</span>
-                        <span>${totalExpensesSpent.toFixed(2)} €</span>
-                    </div>
-                    ${rowsHtml}
-                </div>
-            `;
+        if (core.hasGithubConfig()) {
+            await core.syncFromGithub(false);
+            core.startPolling();
         } else {
-            expCont.innerHTML = '';
+            core.updateCloudBadge('local');
         }
-    },
-
-    saveBudgets: (closeAfter = false) => {
-        const budgetCats = core.getBudgetCategories();
-        budgetCats.forEach((cat, i) => {
-            const val = document.getElementById('b_cat_' + i).value;
-            if (val) core.data.budgets[cat] = parseFloat(val);
-            else delete core.data.budgets[cat];
-        });
-        core.saveLocal();
-        core.renderRatiosTab();
-        core.renderAll();
-        if (closeAfter) core.closeModal('budgetsModal');
-        else core.switchBudgetTab('ratios');
-    },
-
-    saveLastYear: (closeAfter = false) => {
-        const budgetCats = core.getBudgetCategories();
-        budgetCats.forEach((cat, i) => {
-            const val = document.getElementById('ly_cat_' + i).value;
-            if (val) core.data.lastYear[cat] = parseFloat(val);
-            else delete core.data.lastYear[cat];
-        });
-        core.saveLocal();
-        core.renderRatiosTab();
-        if (closeAfter) core.closeModal('budgetsModal');
-        else core.switchBudgetTab('ratios');
-    },
-
-    openShareModal: () => {
-        document.getElementById('btnCopyShare').innerText = '📋 Copiar text';
-        core.generateShareText();
-        document.getElementById('shareModal').style.display = 'block';
-    },
-
-    selectSharePreset: (preset) => {
-        const cfg = core.getConfig();
-        const checks = document.querySelectorAll('input[name="sharePersonCheck"]');
-        const kids = core.getKidsList();
-        const casa = cfg.casaMembers;
-
-        checks.forEach(c => {
-            if (preset === 'kids') c.checked = kids.includes(c.value);
-            else if (preset === 'casa') c.checked = casa.includes(c.value);
-            else c.checked = false;
-        });
-        core.generateShareText();
-    },
-
-    generateShareText: () => {
-        const selectedPeople = Array.from(document.querySelectorAll('input[name="sharePersonCheck"]:checked')).map(c => c.value);
-        const area = document.getElementById('shareTextArea');
-
-        if (selectedPeople.length === 0) {
-            area.value = '';
-            return;
-        }
-
-        const incIdeas = document.getElementById('shareIncIdeas').checked;
-        const incConfirmedOurs = document.getElementById('shareIncConfirmedOurs').checked;
-        const incConfirmedOthers = document.getElementById('shareIncConfirmedOthers').checked;
-
-        const incPrice = document.getElementById('shareIncPrice').checked;
-        const incUrl = document.getElementById('shareIncUrl').checked;
-        const incComments = document.getElementById('shareIncComments').checked;
-        const incEvent = document.getElementById('shareIncEvent').checked;
-
-        const publicGifts = core.data.gifts.filter(g => (g.type || 'gift') === 'gift' && !g.isSecret);
-
-        const formatGiftLine = (g, prefixBullet = '•', extraMeta = '') => {
-            let line = `${prefixBullet} ${g.title}`;
-            const priceVal = parseFloat(g.price) || 0;
-            if (incPrice && priceVal > 0) line += ` (${g.isApprox ? '~' : ''}${priceVal} €)`;
-            if (incEvent && g.event && g.event !== '❓ Per decidir') line += ` — _${g.event}_`;
-            if (extraMeta) line += ` ${extraMeta}`;
-            const out = [line];
-            if (incUrl && g.url && g.url.trim()) out.push(`  🔗 ${g.url.trim()}`);
-            if (incComments && g.comments && g.comments.trim()) out.push(`  📝 ${g.comments.trim().replace(/\n+/g, ' ')}`);
-            return out;
-        };
-
-        let lines = ['🎁 *RESUM DE REGALS* 🎄'];
-        let totalFound = 0;
-
-        selectedPeople.forEach(person => {
-            const forPerson = publicGifts.filter(g => {
-                const r = g.recipients || (g.recipient ? [g.recipient] : []);
-                return r.includes(person);
-            });
-
-            const ideas = incIdeas ? forPerson.filter(g => g.state === 'Idea') : [];
-            const oursConfirmed = incConfirmedOurs ? forPerson.filter(g => {
-                const isPaid = g.hasOwnProperty('paidByUs') ? g.paidByUs : (g.from === 'Nosaltres' || !g.from);
-                return isPaid && g.state !== 'Idea';
-            }) : [];
-            const othersConfirmed = incConfirmedOthers ? forPerson.filter(g => {
-                const isPaid = g.hasOwnProperty('paidByUs') ? g.paidByUs : (g.from === 'Nosaltres' || !g.from);
-                return !isPaid && g.state !== 'Idea';
-            }) : [];
-
-            if (ideas.length > 0 || oursConfirmed.length > 0 || othersConfirmed.length > 0) {
-                lines.push('');
-                lines.push(`👤 *${person.toUpperCase()}*`);
-
-                ideas.forEach(g => {
-                    totalFound++;
-                    lines.push(...formatGiftLine(g, '💡'));
-                });
-
-                oursConfirmed.forEach(g => {
-                    totalFound++;
-                    lines.push(...formatGiftLine(g, '🏠', `_[${g.state}]_`));
-                });
-
-                othersConfirmed.forEach(g => {
-                    totalFound++;
-                    const froms = g.froms || (g.from ? [g.from] : []);
-                    const fromLabel = froms.length > 0 ? `_(De: ${froms.join(', ')})_` : '_(Altra casa)_';
-                    lines.push(...formatGiftLine(g, '🏡', fromLabel));
-                });
-            }
-        });
-
-        if (totalFound === 0) {
-            area.value = `No hi ha cap element coincident amb els criteris marcats per a: ${selectedPeople.join(', ')}.`;
-        } else {
-            area.value = lines.join('\n');
-        }
-    },
-
-    copyShareText: () => {
-        const area = document.getElementById('shareTextArea');
-        if (!area.value.trim()) return alert("No hi ha cap text per copiar.");
-
-        const btn = document.getElementById('btnCopyShare');
-        const markCopied = () => {
-            btn.innerText = '✅ Copiat al porta-retalls!';
-            btn.style.background = 'var(--c-green)';
-            setTimeout(() => {
-                btn.innerText = '📋 Copiar text';
-                btn.style.background = '#2471a3';
-            }, 2200);
-        };
-
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(area.value).then(markCopied).catch(() => {
-                area.select();
-                document.execCommand('copy');
-                markCopied();
-            });
-        } else {
-            area.select();
-            document.execCommand('copy');
-            markCopied();
-        }
-    },
-
-    /* --- [9] FORMULARI DE REGALS/DESPESES (DELIVERYDATE + REGALS CONJUNTS) --- */
-    closeModal: (id) => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = 'none';
-    },
-
-    toggleDeliveryField: () => {
-        const isGift = document.getElementById('gType').value === 'gift';
-        const stateVal = document.getElementById('gState').value;
-        const wrap = document.getElementById('deliveryDateContainer');
-        if (!wrap) return;
-        const show = isGift && (stateVal === 'Comprat/Delivery' || Boolean(document.getElementById('gDeliveryDate').value));
-        wrap.classList.toggle('hidden', !show);
-    },
-
-    updateStateOptions: (desiredState = null) => {
-        const isGift = document.getElementById('gType').value === 'gift';
-        const isPaidByUs = !isGift || document.getElementById('gPaidByUs').checked;
-        const stateSel = document.getElementById('gState');
-        const lblState = document.getElementById('lblState');
-        const lblPrice = document.getElementById('lblPrice');
-        const paidBox = document.getElementById('paidByUsLabel');
-        const paidText = document.getElementById('paidByUsText');
-
-        if (isGift && !isPaidByUs) {
-            paidBox.classList.add('is-other-house');
-            paidText.innerText = "🏡 D'una altra casa (No suma al nostre pressupost)";
-            lblState.innerText = "Estat (Regal d'una altra casa):";
-            lblPrice.innerText = "Preu orientatiu (€) (Opcional, no suma):";
-
-            stateSel.innerHTML = `
-                <option value="Idea">💡 Idea / Proposta</option>
-                <option value="Confirmat">🤝 Confirmat</option>
-            `;
-            stateSel.value = (desiredState && ['Idea', 'Confirmat'].includes(desiredState)) ? desiredState : 'Confirmat';
-        } else {
-            paidBox.classList.remove('is-other-house');
-            paidText.innerText = "💰 Ho paguem nosaltres (Anotar la nostra aportació)";
-            lblState.innerText = "Estat (Idees i Decidits no sumen a Gastat):";
-            lblPrice.innerText = "Preu (€ — nostra part) i Tipus d'Import:";
-
-            stateSel.innerHTML = `
-                <option value="Idea">💡 Idea / Previst (No suma despesa)</option>
-                <option value="Decidit">🎯 Decidit, pendent de comprar</option>
-                <option value="Comprat/Delivery">🚚 Comprat / Pagat</option>
-                <option value="El tenim">✅ El tenim</option>
-                <option value="Embolicat">🎀 Embolicat</option>
-            `;
-            if (desiredState && ['Idea', 'Decidit', 'Comprat/Delivery', 'El tenim', 'Embolicat'].includes(desiredState)) {
-                stateSel.value = desiredState;
-            } else if (desiredState === 'Confirmat') {
-                stateSel.value = 'Decidit';
-            } else {
-                stateSel.value = 'Idea';
-            }
-        }
-        core.toggleDeliveryField();
-    },
-
-    onPaidByUsChange: () => {
-        core.updateStateOptions(document.getElementById('gState').value);
-    },
-
-    setItemType: (type, preserveState = null) => {
-        document.getElementById('gType').value = type;
-        const isGift = (type === 'gift');
-
-        document.getElementById('typeBtnGift').classList.toggle('active', isGift);
-        document.getElementById('typeBtnExpense').classList.toggle('active-green', !isGift);
-
-        document.getElementById('giftOnlyFields').classList.toggle('hidden', !isGift);
-        document.getElementById('secretWrapper').classList.toggle('hidden', !isGift);
-        document.getElementById('expenseFields').classList.toggle('hidden', isGift);
-
-        if (!isGift) {
-            document.getElementById('gEvent').value = '✨ General Festes';
-            document.getElementById('roundContainer').classList.add('hidden');
-        } else {
-            if (document.getElementById('gEvent').value === '✨ General Festes') {
-                document.getElementById('gEvent').value = '❓ Per decidir';
-            }
-            core.toggleRounds();
-        }
-
-        document.getElementById('lblTitle').innerText = isGift ? "Descripció (Què és?):" : "Concepte de la despesa:";
-        document.getElementById('gTitle').placeholder = isGift ? "Ex: Bicicleta vermella" : "Ex: Dinar Santa Llúcia, Torrons, Arbre...";
-        core.updateStateOptions(preserveState || document.getElementById('gState').value);
-    },
-
-    toggleRounds: () => {
-        const cfg = core.getConfig();
-        const isGift = document.getElementById('gType').value === 'gift';
-        const ev = document.getElementById('gEvent').value;
-        const rc = document.getElementById('roundContainer');
-        if (isGift && ev === cfg.bigTioName && cfg.rounds.length > 0) rc.classList.remove('hidden');
-        else rc.classList.add('hidden');
-    },
-
-    openModalForTarget: (targetType, targetValue = null) => {
-        const cfg = core.getConfig();
-        core.openModal(null);
-        const recipChecks = document.querySelectorAll('input[name="gRecipCheck"]');
-
-        if (targetType === 'person' && targetValue) {
-            recipChecks.forEach(c => { if (c.value === targetValue) c.checked = true; });
-        } else if (targetType === 'casa4') {
-            recipChecks.forEach(c => { if (cfg.casaMembers.includes(c.value)) c.checked = true; });
-        }
-
-        const boardEvEl = document.getElementById('boardEventFilter');
-        if (boardEvEl && boardEvEl.value && boardEvEl.value !== 'all') {
-            document.getElementById('gEvent').value = boardEvEl.value;
-            core.toggleRounds();
-        }
-    },
-
-    openModal: (id = null) => {
-        const cfg = core.getConfig();
-        const isNew = (id === null);
-        document.getElementById('modalTitle').innerText = isNew ? "Nou Element ✨" : "Editar Element ✏️";
-        document.getElementById('btnDelete').classList.toggle('hidden', isNew);
-        document.getElementById('btnDuplicate').classList.toggle('hidden', isNew);
-        document.getElementById('dupBanner').classList.add('hidden');
-
-        if (core.currentUser) {
-            document.getElementById('secretContainer').style.display = 'block';
-            document.getElementById('secretWarning').style.display = 'none';
-        } else {
-            document.getElementById('secretContainer').style.display = 'none';
-            document.getElementById('secretWarning').style.display = 'block';
-        }
-
-        const recipChecks = document.querySelectorAll('input[name="gRecipCheck"]');
-        const fromChecks = document.querySelectorAll('input[name="gFromCheck"]');
-        recipChecks.forEach(c => c.checked = false);
-        fromChecks.forEach(c => c.checked = false);
-
-        if (isNew) {
-            document.getElementById('gPaidByUs').checked = true;
-            if (core.activeMainView === 'santallucia') {
-                core.setItemType('expense', 'Idea');
-                document.getElementById('gExpenseCat').value = '🍲 Dinar de Santa Llúcia';
-            } else {
-                core.setItemType('gift', 'Idea');
-                document.getElementById('gEvent').value = '❓ Per decidir';
-            }
-            document.getElementById('giftId').value = '';
-            document.getElementById('gTitle').value = '';
-            document.getElementById('gPrice').value = '';
-            document.getElementById('gPriceType').value = 'definitive';
-            document.getElementById('gDeliveryDate').value = '';
-            document.getElementById('gUrl').value = '';
-            document.getElementById('gImage').value = '';
-            document.getElementById('gComments').value = '';
-            document.getElementById('gSecret').checked = false;
-            fromChecks.forEach(c => { if (cfg.parents.includes(c.value)) c.checked = true; });
-        } else {
-            const g = core.data.gifts.find(x => x.id === id);
-            const itemType = g.type || 'gift';
-
-            if (itemType === 'expense') {
-                document.getElementById('gPaidByUs').checked = true;
-                document.getElementById('gExpenseCat').value = g.expenseCat || '🍲 Dinar de Santa Llúcia';
-                document.getElementById('gDeliveryDate').value = '';
-            } else {
-                const recips = g.recipients || (g.recipient ? [g.recipient] : []);
-                recipChecks.forEach(c => { if (recips.includes(c.value)) c.checked = true; });
-
-                const froms = g.froms || (g.from && g.from !== 'Nosaltres' ? [g.from] : cfg.parents);
-                fromChecks.forEach(c => { if (froms.includes(c.value)) c.checked = true; });
-
-                const isPaid = g.hasOwnProperty('paidByUs') ? g.paidByUs : (g.from === 'Nosaltres' || !g.from);
-                document.getElementById('gPaidByUs').checked = isPaid;
-                document.getElementById('gDeliveryDate').value = g.deliveryDate || '';
-            }
-
-            core.setItemType(itemType, g.state);
-            document.getElementById('giftId').value = g.id;
-            document.getElementById('gEvent').value = g.event || (itemType === 'expense' ? '✨ General Festes' : '❓ Per decidir');
-            if (g.round) document.getElementById('gRound').value = g.round;
-            document.getElementById('gPriceType').value = g.isApprox ? 'approx' : 'definitive';
-            document.getElementById('gSecret').checked = g.isSecret;
-
-            if (g.isSecret && itemType === 'gift') {
-                document.getElementById('gTitle').value = core.decrypt(g.title, core.pin);
-                document.getElementById('gPrice').value = core.decrypt(g.price, core.pin);
-                document.getElementById('gUrl').value = core.decrypt(g.url, core.pin);
-                document.getElementById('gImage').value = core.decrypt(g.image, core.pin);
-                document.getElementById('gComments').value = core.decrypt(g.comments || '', core.pin);
-            } else {
-                document.getElementById('gTitle').value = g.title;
-                document.getElementById('gPrice').value = g.price;
-                document.getElementById('gUrl').value = g.url;
-                document.getElementById('gImage').value = g.image;
-                document.getElementById('gComments').value = g.comments || '';
-            }
-        }
-        core.toggleRounds();
-        core.toggleDeliveryField();
-        document.getElementById('giftModal').style.display = 'block';
-    },
-
-    buildItemFromForm: (forceId = null, forceState = null) => {
-        const cfg = core.getConfig();
-        const itemType = document.getElementById('gType').value;
-        let title = document.getElementById('gTitle').value.trim();
-        if (!title) {
-            alert("Escriu una descripció!");
-            return null;
-        }
-
-        let selectedRecips = [];
-        let selectedFroms = [];
-        let isSecret = false;
-        let paidByUs = true;
-        let expenseCat = null;
-        let deliveryDate = '';
-
-        if (itemType === 'gift') {
-            selectedRecips = Array.from(document.querySelectorAll('input[name="gRecipCheck"]:checked')).map(c => c.value);
-            if (selectedRecips.length === 0) {
-                alert("Ei! Marca almenys una persona a 'Per a qui?'");
-                return null;
-            }
-            selectedFroms = Array.from(document.querySelectorAll('input[name="gFromCheck"]:checked')).map(c => c.value);
-            isSecret = document.getElementById('gSecret').checked;
-            paidByUs = document.getElementById('gPaidByUs').checked;
-            deliveryDate = document.getElementById('gDeliveryDate').value || '';
-        } else {
-            expenseCat = document.getElementById('gExpenseCat').value;
-        }
-
-        const id = forceId || document.getElementById('giftId').value || Date.now().toString();
-        let price = document.getElementById('gPrice').value;
-        const isApprox = document.getElementById('gPriceType').value === 'approx';
-        let url = document.getElementById('gUrl').value;
-        let image = document.getElementById('gImage').value;
-        let comments = document.getElementById('gComments').value;
-
-        if (isSecret && core.currentUser && itemType === 'gift') {
-            title = core.crypt(title, core.pin);
-            price = core.crypt(price, core.pin);
-            url = core.crypt(url, core.pin);
-            image = core.crypt(image, core.pin);
-            comments = core.crypt(comments, core.pin);
-        }
-
-        const chosenEvent = document.getElementById('gEvent').value;
-
-        return {
-            id,
-            type: itemType,
-            expenseCat,
-            title,
-            price,
-            isApprox,
-            deliveryDate,
-            url,
-            image,
-            comments,
-            isSecret,
-            paidByUs,
-            recipients: selectedRecips,
-            froms: selectedFroms,
-            event: chosenEvent,
-            round: (itemType === 'gift' && chosenEvent === cfg.bigTioName) ? document.getElementById('gRound').value : null,
-            state: forceState || document.getElementById('gState').value,
-            createdBy: core.currentUser || 'Família',
-            updatedAt: Date.now()
-        };
-    },
-
-    saveGift: () => {
-        const newItem = core.buildItemFromForm();
-        if (!newItem) return;
-
-        const idx = core.data.gifts.findIndex(x => x.id === newItem.id);
-        if (idx > -1) core.data.gifts[idx] = newItem;
-        else core.data.gifts.push(newItem);
-
-        core.saveLocal();
-        core.closeModal('giftModal');
-        core.renderAll();
-    },
-
-    duplicateGift: () => {
-        const newId = Date.now().toString();
-        const duplicatedItem = core.buildItemFromForm(newId, 'Idea');
-        if (!duplicatedItem) return;
-
-        core.data.gifts.push(duplicatedItem);
-        core.saveLocal();
-        core.renderAll();
-
-        document.getElementById('giftId').value = newId;
-        core.updateStateOptions('Idea');
-        document.getElementById('modalTitle').innerText = "Editar Còpia 📋";
-        document.getElementById('dupBanner').classList.remove('hidden');
-    },
-
-    deleteGift: () => {
-        if (confirm("Segur que vols eliminar aquest element?")) {
-            const id = document.getElementById('giftId').value;
-            core.data.gifts = core.data.gifts.filter(x => x.id !== id);
-            if (!core.data.deletedIds) core.data.deletedIds = [];
-            if (!core.data.deletedIds.includes(id)) core.data.deletedIds.push(id);
-            core.saveLocal();
-            core.closeModal('giftModal');
-            core.renderAll();
-        }
-    },
-
-    resolveGiftDisplay: (g) => {
-        const cfg = core.getConfig();
-        const isExpense = (g.type === 'expense');
-        const isOthersSecret = (!isExpense && g.isSecret && g.createdBy !== core.currentUser);
-        const titleDisplay = isOthersSecret ? "🎁 Sorpresa de " + g.createdBy : (g.isSecret ? core.decrypt(g.title, core.pin) : g.title);
-        const priceVal = isOthersSecret ? 0 : parseFloat(g.isSecret ? core.decrypt(g.price, core.pin) : g.price) || 0;
-        const imgUrl = isOthersSecret ? null : (g.isSecret ? core.decrypt(g.image, core.pin) : g.image);
-        const shopUrl = isOthersSecret ? null : (g.isSecret ? core.decrypt(g.url, core.pin) : g.url);
-        const commentsDisplay = isOthersSecret ? '' : (g.isSecret ? core.decrypt(g.comments || '', core.pin) : (g.comments || ''));
-
-        const recips = g.recipients || (g.recipient ? [g.recipient] : []);
-        const froms = g.froms || (g.from && g.from !== 'Nosaltres' ? [g.from] : cfg.parents);
-        const isPaidByUs = isExpense ? true : (g.hasOwnProperty('paidByUs') ? g.paidByUs : (g.from === 'Nosaltres' || !g.from));
-
-        const hasUsAsGiver = cfg.parents.some(p => froms.includes(p));
-        const isReceivedFromOthers = !isExpense && !isPaidByUs && !hasUsAsGiver;
-        const isOtherHouse = !isExpense && !isPaidByUs;
-        const jointContributors = !isExpense ? core.getJointContributors(froms, isPaidByUs) : [];
-        const deliveryDate = !isExpense ? (g.deliveryDate || '') : '';
-
-        return {
-            isExpense,
-            isOthersSecret,
-            titleDisplay,
-            priceVal,
-            imgUrl,
-            shopUrl,
-            commentsDisplay,
-            recips,
-            froms,
-            isPaidByUs,
-            isReceivedFromOthers,
-            isOtherHouse,
-            jointContributors,
-            deliveryDate
-        };
     }
 };
