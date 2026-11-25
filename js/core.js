@@ -60,7 +60,8 @@ export const STATE_PROGRESS_ORDER = [
     "Comprat/Delivery",
     "El tenim",
     "Embolicat",
-    "Confirmat"
+    "Confirmat",
+    "Descartat"
 ];
 
 export const core = {
@@ -100,7 +101,8 @@ export const core = {
         { value: 'Comprat/Delivery', label: '🚚 Comprat/Delivery' },
         { value: 'El tenim', label: '✅ El tenim' },
         { value: 'Embolicat', label: '🎀 Embolicat' },
-        { value: 'Confirmat', label: '🤝 Confirmat' }
+        { value: 'Confirmat', label: '🤝 Confirmat' },
+        { value: 'Descartat', label: '🚫 Descartat' }
     ],
 
     expenseCategories: [...DEFAULT_EXPENSE_CATEGORIES],
@@ -245,6 +247,19 @@ export const core = {
     getStateRank: (st) => {
         const idx = STATE_PROGRESS_ORDER.indexOf(st);
         return idx === -1 ? 99 : idx;
+    },
+
+    getStateCssKey: (st) => {
+        const map = {
+            'Idea': 'idea',
+            'Decidit': 'decidit',
+            'Comprat/Delivery': 'delivery',
+            'El tenim': 'tenim',
+            'Embolicat': 'embolicat',
+            'Confirmat': 'confirmat',
+            'Descartat': 'descartat'
+        };
+        return map[st] || 'idea';
     },
 
     getEventShortBadges: () => {
@@ -1399,6 +1414,7 @@ export const core = {
                 return;
             }
             if (!d.isPaidByUs || d.isOtherHouse) return;
+            if (g.state === 'Descartat') return;
 
             const isPlanned = (g.state === 'Idea' || g.state === 'Decidit');
             const isSpent = d.isExpense
@@ -2084,8 +2100,8 @@ export const core = {
         const incComments = document.getElementById('shareIncComments').checked;
         const incEvent = document.getElementById('shareIncEvent').checked;
 
-        const publicGifts = core.data.gifts.filter(g => (g.type || 'gift') === 'gift' && !g.isSecret);
-
+        const publicGifts = core.data.gifts.filter(g => (g.type || 'gift') === 'gift' && !g.isSecret && g.state !== 'Descartat');
+        
         const formatGiftLine = (g, prefixBullet = '•', extraMeta = '') => {
             let line = `${prefixBullet} ${g.title}`;
             const priceVal = parseFloat(g.price) || 0;
@@ -2207,12 +2223,13 @@ export const core = {
             stateSel.innerHTML = `
                 <option value="Idea">💡 Idea / Proposta</option>
                 <option value="Confirmat">🤝 Confirmat</option>
+                <option value="Descartat">🚫 Descartat (No suma ni es mostra)</option>
             `;
-            stateSel.value = (desiredState && ['Idea', 'Confirmat'].includes(desiredState)) ? desiredState : 'Confirmat';
+            stateSel.value = (desiredState && ['Idea', 'Confirmat', 'Descartat'].includes(desiredState)) ? desiredState : 'Confirmat';
         } else {
             paidBox.classList.remove('is-other-house');
             paidText.innerText = "💰 Ho paguem nosaltres (Anotar la nostra aportació)";
-            lblState.innerText = "Estat (Idees i Decidits no sumen a Gastat):";
+            lblState.innerText = "Estat (Idees, Decidits i Descartats no sumen a Gastat):";
             lblPrice.innerText = "Preu (€ — nostra part) i Tipus d'Import:";
 
             stateSel.innerHTML = `
@@ -2221,8 +2238,9 @@ export const core = {
                 <option value="Comprat/Delivery">🚚 Comprat / Pagat</option>
                 <option value="El tenim">✅ El tenim</option>
                 <option value="Embolicat">🎀 Embolicat</option>
+                <option value="Descartat">🚫 Descartat (No suma ni es mostra)</option>
             `;
-            if (desiredState && ['Idea', 'Decidit', 'Comprat/Delivery', 'El tenim', 'Embolicat'].includes(desiredState)) {
+            if (desiredState && ['Idea', 'Decidit', 'Comprat/Delivery', 'El tenim', 'Embolicat', 'Descartat'].includes(desiredState)) {
                 stateSel.value = desiredState;
             } else if (desiredState === 'Confirmat') {
                 stateSel.value = 'Decidit';
@@ -2230,6 +2248,7 @@ export const core = {
                 stateSel.value = 'Idea';
             }
         }
+        
         core.toggleDeliveryField();
     },
 
