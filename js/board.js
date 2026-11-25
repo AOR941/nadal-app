@@ -59,6 +59,7 @@ export const boardView = {
                     <option value="consolidated">✅ Només Consolidats (sense Idees)</option>
                     <option value="Idea">💡 Només Idees</option>
                     <option value="pending">⏳ Pendents nostres de comprar/tenir</option>
+                    <option value="Descartat">🚫 Només Descartats</option>
                 </select>
                 <select id="boardPersonSelect" onchange="app.views.board.onControlChange()">
                     <option value="all">👤 Qualsevol altra persona</option>
@@ -209,6 +210,8 @@ export const boardView = {
         const filteredGifts = core.data.gifts.filter(g => {
             if ((g.type || 'gift') !== 'gift') return false;
             if (eventF !== 'all' && (g.event || '❓ Per decidir') !== eventF) return false;
+            if (statusF === 'Descartat') return g.state === 'Descartat';
+            if (g.state === 'Descartat') return false;
             if (statusF === 'consolidated' && g.state === 'Idea') return false;
             if (statusF === 'Idea' && g.state !== 'Idea') return false;
             if (statusF === 'pending' && (g.state === 'Idea' || g.state === 'El tenim' || g.state === 'Embolicat' || g.state === 'Confirmat')) return false;
@@ -296,7 +299,7 @@ export const boardView = {
         const isEmpty = (sortedList.length === 0);
         const eventBadges = core.getEventShortBadges();
 
-        const consolidatedGifts = sortedList.filter(g => g.state !== 'Idea');
+        const consolidatedGifts = sortedList.filter(g => g.state !== 'Idea' && g.state !== 'Descartat');
         let countersHtml = '';
 
         eventBadges.forEach(evObj => {
@@ -308,9 +311,14 @@ export const boardView = {
 
         if (!countersHtml) {
             const ideasCount = sortedList.filter(g => g.state === 'Idea').length;
-            countersHtml = ideasCount > 0
-                ? `<span class="cnt-pill zero">0 confirmats · 💡 ${ideasCount} ${ideasCount === 1 ? 'idea' : 'idees'}</span>`
-                : `<span class="cnt-pill zero">0 regals</span>`;
+            const discardedCount = sortedList.filter(g => g.state === 'Descartat').length;
+            if (discardedCount > 0) {
+                countersHtml = `<span class="cnt-pill zero">🚫 ${discardedCount} ${discardedCount === 1 ? 'descartat' : 'descartats'}</span>`;
+            } else if (ideasCount > 0) {
+                countersHtml = `<span class="cnt-pill zero">0 confirmats · 💡 ${ideasCount} ${ideasCount === 1 ? 'idea' : 'idees'}</span>`;
+            } else {
+                countersHtml = `<span class="cnt-pill zero">0 regals</span>`;
+            }
         }
 
         const ourGifts = [];
@@ -356,15 +364,13 @@ export const boardView = {
     buildMiniCardHtml: (g, d, showSpecificRecipients, isReceived) => {
         const cfg = core.getConfig();
         const isIdea = (g.state === 'Idea');
-        const stateCls = isIdea ? 'idea'
-            : (g.state === 'Decidit' ? 'decidit'
-            : (g.state === 'Confirmat' ? 'confirmat'
-            : (g.state === 'Embolicat' || g.state === 'El tenim' ? 'comprat' : '')));
+        const stateKey = core.getStateCssKey(g.state);
+        const stateCls = stateKey;
 
         const cardClasses = [
             'mini-gift',
             isIdea ? 'is-idea' : '',
-            d.isOthersSecret ? 'is-secret' : '',
+            d.isOthersSecret ? 'is-secret' : `state-${stateKey}`,
             isReceived ? 'is-received' : ''
         ].filter(Boolean).join(' ');
 
