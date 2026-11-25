@@ -385,8 +385,12 @@ export const listView = {
             if (!hasDelivery) return false;
         }
 
-        if (listView.selectedStates.length > 0 && !listView.selectedStates.includes(g.state)) return false;
-
+        if (listView.selectedStates.length > 0) {
+            if (!listView.selectedStates.includes(g.state)) return false;
+        } else if (g.state === 'Descartat' && !search) {
+            return false;
+        }
+        
         const evVal = g.event || '❓ Per decidir';
         if (listView.selectedEvents.length > 0 && !listView.selectedEvents.includes(evVal)) return false;
 
@@ -506,8 +510,11 @@ export const listView = {
         const board = document.createElement('div');
         board.className = 'kanban-board';
 
-        STATE_PROGRESS_ORDER.forEach(st => {
-            const colItems = items.filter(g => g.state === st);
+        const visibleStates = STATE_PROGRESS_ORDER.filter(st =>
+            st !== 'Descartat' || listView.selectedStates.includes('Descartat') || items.some(g => g.state === 'Descartat')
+        );
+
+        visibleStates.forEach(st => {            const colItems = items.filter(g => g.state === st);
             const col = document.createElement('div');
             col.className = 'kanban-col';
             col.dataset.targetState = st;
@@ -589,7 +596,7 @@ export const listView = {
         if (!d.isExpense) {
             if (newState === 'Confirmat' && d.isPaidByUs) {
                 g.paidByUs = false;
-            } else if (newState !== 'Confirmat' && !d.isPaidByUs) {
+        } else if (newState !== 'Confirmat' && newState !== 'Descartat' && !d.isPaidByUs) {
                 g.paidByUs = true;
             }
         }
@@ -629,8 +636,10 @@ export const listView = {
         const fromsText = d.froms.join(', ');
 
         const div = document.createElement('div');
+        const stateKey = core.getStateCssKey(g.state);
         const extClass = d.isExpense ? 'expense' : (d.isOthersSecret ? 'secret' : (d.isOtherHouse ? 'altres' : ''));
-        div.className = `card ${extClass}`;
+        const stateClass = d.isOthersSecret ? '' : `state-${stateKey}`;
+        div.className = `card ${extClass} ${stateClass}`.trim();
 
         if (enableDrag && !d.isOthersSecret) {
             div.draggable = true;
@@ -648,10 +657,7 @@ export const listView = {
             else alert("Top Secret! 🤫 Això és cosa de " + g.createdBy);
         };
 
-        const badgeClass = g.state === 'Idea' ? 'idea'
-            : (g.state === 'Decidit' ? 'decidit'
-            : (g.state === 'Confirmat' ? 'confirmat'
-            : (g.state === 'Embolicat' || g.state === 'El tenim' ? 'comprat' : '')));
+       const badgeClass = stateKey;
 
         const subtitleHtml = d.isExpense
             ? `<span class="badge expense-cat">${g.expenseCat || '🎄 Despesa'}</span>${g.event ? ' | ' + g.event : ''}`
