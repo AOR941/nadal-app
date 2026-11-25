@@ -1280,3 +1280,149 @@ header h2 { font-size: 1.25em; margin-top: 2px; }
     border-color: #b8c6d4;
     background: #f5f7fa;
 }
+
+/* ==========================================================================
+ * CODI DE COLORS PER ESTAT (LLISTA, GRAELLA, KANBAN I MAPA) + DESCARTAT
+ * ========================================================================== */
+
+/* 1. Targetes de Llista, Graella i Kanban (.card) */
+.card.state-idea {
+    border: 1px dashed #c5cdd0;
+    border-left: 5px solid #95a5a6;
+    background: #fbfbfa;
+}
+.card.state-decidit {
+    border: 1px solid #f2dcc6;
+    border-left: 5px solid #e67e22;
+    background: #fffdf9;
+}
+.card.state-delivery {
+    border: 1px solid #cce3f4;
+    border-left: 5px solid #2980b9;
+    background: #f4f9fd;
+}
+.card.state-tenim {
+    border: 1px solid #c6ebd5;
+    border-left: 5px solid #27ae60;
+    background: #f3fbf6;
+}
+.card.state-embolicat {
+    border: 1px solid #c2dccb;
+    border-left: 5px solid #165b33;
+    background: #f3f7f4;
+    opacity: 0.86;
+    transition: opacity 0.15s ease;
+}
+.card.state-embolicat:hover { opacity: 1; }
+
+.card.state-confirmat {
+    border: 1px solid #c4dceb;
+    border-left: 5px solid #1f618d;
+    background: #f4f9fd;
+}
+.card.state-descartat {
+    border: 1px dotted #bfc6c9;
+    border-left: 5px dotted #bdc3c7;
+    background: #f7f7f7;
+    opacity: 0.72;
+    transition: opacity 0.15s ease;
+}
+.card.state-descartat:hover { opacity: 0.96; }
+.card.state-descartat .card-title { color: #6c7a89; }
+
+/* Prioritat per a Despeses Nadalenques (mantenen identitat verda segons fase) */
+.card.expense.state-idea,
+.card.expense.state-decidit {
+    border: 1px dashed #a9dfbf;
+    border-left: 5px solid #52be80;
+    background: #f7fcf9;
+}
+.card.expense.state-delivery,
+.card.expense.state-tenim,
+.card.expense.state-embolicat {
+    border: 1px solid #b7e1c6;
+    border-left: 5px solid var(--c-green);
+    background: #f0faf3;
+    opacity: 1;
+}
+.card.expense.state-descartat {
+    border: 1px dotted #bfc6c9;
+    border-left: 5px dotted #bdc3c7;
+    background: #f7f7f7;
+    opacity: 0.72;
+}
+
+/* 2. Mini-targetes de la vista Mapa (.mini-gift) */
+.mini-gift.state-idea {
+    border: 1px dashed #c8d0d2;
+    border-left: 4px solid #95a5a6;
+    background: #fbfbfa;
+}
+.mini-gift.state-decidit {
+    border: 1px solid #f2dcc6;
+    border-left: 4px solid #e67e22;
+    background: #fffdf9;
+}
+.mini-gift.state-delivery {
+    border: 1px solid #cce3f4;
+    border-left: 4px solid #2980b9;
+    background: #f4f9fd;
+}
+.mini-gift.state-tenim {
+    border: 1px solid #c6ebd5;
+    border-left: 4px solid #27ae60;
+    background: #f3fbf6;
+}
+.mini-gift.state-embolicat {
+    border: 1px solid #c2dccb;
+    border-left: 4px solid #165b33;
+    background: #f3f7f4;
+    opacity: 0.85;
+    transition: opacity 0.15s ease;
+}
+.mini-gift.state-embolicat:hover { opacity: 1; }
+
+.mini-gift.state-confirmat {
+    border: 1px solid #c4dceb;
+    border-left: 4px solid #1f618d;
+    background: #f4f9fd;
+}
+.mini-gift.state-descartat {
+    border: 1px dotted #bfc6c9;
+    border-left: 4px dotted #bdc3c7;
+    background: #f7f7f7;
+    color: #6c7a89;
+    opacity: 0.72;
+    transition: opacity 0.15s ease;
+}
+.mini-gift.state-descartat:hover { opacity: 0.96; }
+
+/* 3. Etiquetes / Badges d'estat unificades (Llista i Mapa) */
+.badge.idea, .mini-badge.idea {
+    background: #eef1f2;
+    color: #5d6d7e;
+}
+.badge.decidit, .mini-badge.decidit {
+    background: #fef0e3;
+    color: #b9580c;
+}
+.badge.delivery, .mini-badge.delivery {
+    background: #e6f3fb;
+    color: #1b6292;
+}
+.badge.tenim, .mini-badge.tenim {
+    background: #e4f7ec;
+    color: #1b7a43;
+}
+.badge.embolicat, .mini-badge.embolicat {
+    background: #d9efe1;
+    color: #114828;
+}
+.badge.confirmat, .mini-badge.confirmat {
+    background: #e2eef6;
+    color: #194d70;
+}
+.badge.descartat, .mini-badge.descartat {
+    background: #eceff1;
+    color: #6c7a89;
+}
