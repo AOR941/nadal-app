@@ -4,13 +4,13 @@
  * ========================================================================== */
 
 import { core } from './core.js';
-import { listView } from './list.js';
-import { boardView } from './board.js';
+import { giftsView } from './gifts.js';
+import { expensesView } from './expenses.js';
 import { adventView } from './advent.js';
 import { santaLluciaView } from './santallucia.js';
 
-core.views.list = listView;
-core.views.board = boardView;
+core.views.gifts = giftsView;
+core.views.expenses = expensesView;
 core.views.advent = adventView;
 core.views.santallucia = santaLluciaView;
 
