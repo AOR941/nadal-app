@@ -2273,3 +2273,73 @@ header {
     opacity: 0.72;
     user-select: none;
 }
+
+
+/* Modal d'identificació ràpida (auto-desbloqueig per PIN) */
+.unlock-modal-card {
+    max-width: 390px !important;
+    padding: 18px !important;
+}
+
+.unlock-user-chips {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.unlock-user-chip {
+    margin: 0;
+    padding: 9px 10px;
+    border-radius: 10px;
+    background: #f2eee6;
+    color: #333;
+    border: 1.5px solid #dcd3c2;
+    font-size: 0.9em;
+    font-weight: 700;
+}
+.unlock-user-chip.active {
+    background: var(--c-green);
+    color: #ffffff;
+    border-color: var(--c-green-dark);
+    box-shadow: 0 2px 6px rgba(22, 91, 51, 0.22);
+}
+
+.unlock-pin-input {
+    text-align: center;
+    font-size: 1.35em !important;
+    letter-spacing: 0.3em;
+    font-weight: 700;
+    padding: 12px !important;
+    background: #faf8f4;
+}
+
+.unlock-error {
+    margin-top: 8px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    background: #fdecea;
+    color: var(--c-red);
+    font-size: 0.85em;
+    font-weight: 700;
+    text-align: center;
+}
+
+.unlock-hint {
+    margin-top: 8px;
+    font-size: 0.78em;
+    color: #6b6356;
+    text-align: center;
+}
+
+.unlock-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+}
+.unlock-actions button {
+    flex: 1;
+    margin: 0;
+    padding: 10px 14px;
+    border-radius: 9px;
+}
