@@ -30,13 +30,18 @@ export const santaLluciaView = {
     },
 
     /* --- [3] RENDERITZAT DE LA VISTA DE SANTA LLÚCIA --- */
-    render: () => {
-        const slItems = core.data.gifts.filter(g => (g.type || 'gift') === 'expense' && g.expenseCat === '🍲 Dinar de Santa Llúcia');
+render: () => {
+        const slItems = (core.data.gifts || []).filter(
+            g => (g.type || 'gift') === 'expense'
+                && g.expenseCat === '🍲 Dinar de Santa Llúcia'
+                && g.state !== 'Descartat'
+        );
 
         let spent = 0;
         let planned = 0;
         slItems.forEach(g => {
-            const p = parseFloat(g.price) || 0;
+            const d = core.resolveGiftDisplay(g);
+            const p = d.priceVal || 0;
             if (g.state === 'Idea' || g.state === 'Decidit') planned += p;
             else spent += p;
         });
@@ -49,8 +54,8 @@ export const santaLluciaView = {
                     <span class="badge expense-cat">${slItems.length} ${slItems.length === 1 ? 'partida' : 'partides'}</span>
                 </div>
                 <div class="advent-stats-row">
-                    <span class="advent-stat-chip" style="background:#d4efdf; color:#1e8449;">💰 Gastat: ${spent.toFixed(2)} €</span>
-                    <span class="advent-stat-chip" style="background:#fdebd0; color:#b9770e;">⏳ Previst / Idees: ${planned.toFixed(2)} €</span>
+                    <span class="advent-stat-chip" style="background:#d4efdf; color:#1e8449;">💰 Gastat: ${core.formatMoney(spent)}</span>
+                    <span class="advent-stat-chip" style="background:#fdebd0; color:#b9770e;">⏳ Previst / Idees: ${core.formatMoney(planned)}</span>
                 </div>
                 <div class="sl-banner-note">
                     📋 Espai preparat per planificar menú, assistents i tasques del dinar. Mentrestant, aquí tens sincronitzades totes les despeses vinculades a <b>🍲 Dinar de Santa Llúcia</b>.
@@ -67,9 +72,7 @@ export const santaLluciaView = {
             listEl.innerHTML = `<div class="person-empty-msg" style="background:white; padding:24px;">Encara no hi ha cap despesa apuntada per al Dinar de Santa Llúcia.</div>`;
         } else {
             slItems.forEach(g => {
-                if (core.views.list && typeof core.views.list.createCardElement === 'function') {
-                    listEl.appendChild(core.views.list.createCardElement(g, true, false));
-                }
+                listEl.appendChild(core.createCardElement(g, { hideExpenseCat: true }));
             });
         }
     }
