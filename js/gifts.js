@@ -24,6 +24,7 @@ export const giftsView = {
     deliveryOnly: false,
     sortBy: 'event', // 'event' | 'state' | 'person' | 'price' | 'delivery'
     filtersOpen: false,
+    hideEmpty: false,
     draggedGiftId: null,
     dragSourceContext: null,
 
@@ -72,31 +73,34 @@ export const giftsView = {
 
         sec.innerHTML = `
             <div class="gifts-top-bar">
-                <div class="gifts-mode-switch" role="tablist" aria-label="Vista de regals">
-                    <button type="button" id="modeBtnMap" class="gifts-mode-btn active" onclick="app.views.gifts.setViewMode('map')">🗺️ Mapa</button>
-                    <button type="button" id="modeBtnState" class="gifts-mode-btn" onclick="app.views.gifts.setViewMode('kanban-state')">📋 Estat</button>
-                    <button type="button" id="modeBtnEvent" class="gifts-mode-btn" onclick="app.views.gifts.setViewMode('kanban-event')">📅 Dia</button>
-                </div>
+                <div class="gifts-bar-row">
+                    <div class="gifts-mode-switch" role="tablist" aria-label="Vista de regals">
+                        <button type="button" id="modeBtnMap" class="gifts-mode-btn active" onclick="app.views.gifts.setViewMode('map')">🗺️ Mapa</button>
+                        <button type="button" id="modeBtnState" class="gifts-mode-btn" onclick="app.views.gifts.setViewMode('kanban-state')">📋 Estat</button>
+                        <button type="button" id="modeBtnEvent" class="gifts-mode-btn" onclick="app.views.gifts.setViewMode('kanban-event')">📅 Dia</button>
+                    </div>
 
-                <div class="gifts-controls-row">
-                    <input type="text" id="giftSearchInput" class="gifts-search-input" placeholder="🔍 Buscar..." oninput="app.views.gifts.render()">
+                    <div class="gifts-bar-actions">
+                        <button type="button" id="trackingFilterBtn" class="gifts-tracking-btn" onclick="app.views.gifts.toggleTrackingFilter()">
+                            🎯 Tracking <span id="trackingCountBadge" class="tracking-count">0</span>
+                        </button>
 
-                    <select id="giftEventSelect" class="gifts-event-select" onchange="app.views.gifts.onEventChange(this.value)">
-                        <option value="all">📅 Tots els dies</option>
-                    </select>
+                        <button type="button" id="giftsFiltersToggleBtn" class="filters-toggle-btn" onclick="app.views.gifts.toggleFiltersPanel()">
+                            🔍 Filtres <span id="giftsActiveCount" class="filter-count-badge hidden">0</span> <span id="giftsFiltersCaret">▾</span>
+                        </button>
 
-                    <button type="button" id="trackingFilterBtn" class="gifts-tracking-btn" onclick="app.views.gifts.toggleTrackingFilter()">
-                        🎯 Tracking <span id="trackingCountBadge" class="tracking-count">0</span>
-                    </button>
-
-                    <button type="button" id="giftsFiltersToggleBtn" class="filters-toggle-btn" onclick="app.views.gifts.toggleFiltersPanel()">
-                        🔍 Filtres <span id="giftsActiveCount" class="filter-count-badge hidden">0</span> <span id="giftsFiltersCaret">▾</span>
-                    </button>
-
-                    <button type="button" id="giftsClearQuickBtn" class="clear-filters-btn hidden" onclick="app.views.gifts.clearFilters()" title="Netejar filtres">✕</button>
+                        <button type="button" id="giftsClearQuickBtn" class="clear-filters-btn hidden" onclick="app.views.gifts.clearFilters()" title="Netejar filtres">✕</button>
+                    </div>
                 </div>
 
                 <div id="giftsFiltersDrawer" class="gifts-filters-drawer collapsed">
+                    <div class="gifts-drawer-search-row">
+                        <input type="text" id="giftSearchInput" class="gifts-search-input" placeholder="🔍 Buscar regal, persona o notes..." oninput="app.views.gifts.render()">
+                        <select id="giftEventSelect" class="gifts-event-select" onchange="app.views.gifts.onEventChange(this.value)">
+                            <option value="all">📅 Tots els dies</option>
+                        </select>
+                    </div>
+
                     <div class="filter-section">
                         <div class="filter-section-header">
                             <span class="filter-group-label">Persones (qualsevol marcada):</span>
@@ -128,9 +132,15 @@ export const giftsView = {
                             </div>
                         </div>
 
-                        <div class="list-sort-box" style="margin-top:0;">
-                            <label for="giftsSortSelect" class="toolbar-mini-label">↕️ Ordre:</label>
-                            <select id="giftsSortSelect" onchange="app.views.gifts.onSortChange(this.value)"></select>
+                        <div class="gifts-drawer-view-opts">
+                            <label id="giftsHideEmptyWrap" class="board-toggle-empty">
+                                <input type="checkbox" id="giftsHideEmptyCheck" onchange="app.views.gifts.onHideEmptyChange(this.checked)">
+                                Amagar buides
+                            </label>
+                            <div class="list-sort-box" style="margin-top:0;">
+                                <label for="giftsSortSelect" class="toolbar-mini-label">↕️ Ordre:</label>
+                                <select id="giftsSortSelect" onchange="app.views.gifts.onSortChange(this.value)"></select>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -224,10 +234,16 @@ export const giftsView = {
             giftsView.sortBy = options[0]?.value || 'event';
         }
         sel.innerHTML = options.map(o => `<option value="${o.value}" ${o.value === giftsView.sortBy ? 'selected' : ''}>${o.label}</option>`).join('');
+        document.getElementById('giftsHideEmptyWrap')?.classList.toggle('hidden', giftsView.viewMode !== 'map');
     },
 
     onSortChange: (val) => {
         giftsView.sortBy = val;
+        giftsView.render();
+    },
+
+    onHideEmptyChange: (checked) => {
+        giftsView.hideEmpty = Boolean(checked);
         giftsView.render();
     },
 
@@ -508,6 +524,7 @@ export const giftsView = {
     },
 
     /* --- VISTA 1: MAPA PER PERSONA --- */
+    /* --- VISTA 1: MAPA PER PERSONA --- */
     renderMap: (filteredGifts, container) => {
         const cfg = core.getConfig();
         const casaMembers = cfg.casaMembers || [];
@@ -516,6 +533,7 @@ export const giftsView = {
         const activePeople = new Set(giftsView.selectedPeople.filter(p => p !== CASA_ALL_TOKEN));
         const showCasaAllSelected = giftsView.selectedPeople.includes(CASA_ALL_TOKEN);
         const hasPersonFilter = activePeople.size > 0 || showCasaAllSelected;
+        const hideEmpty = giftsView.hideEmpty;
 
         const appendSection = (title, gridClass, boxesSpec) => {
             if (!boxesSpec || boxesSpec.length === 0) return;
@@ -542,6 +560,7 @@ export const giftsView = {
                 const r = giftsView.getRecipientsList(g);
                 return !isGiftForCasaAll(r) && r.includes(personName);
             });
+            if (hideEmpty && boxGifts.length === 0) return;
             casaBoxes.push({
                 boxId: `person:${personName}`,
                 title: core.formatMemberLabel(personName),
@@ -552,12 +571,12 @@ export const giftsView = {
                 isCasaAllBox: false,
                 showSpecificRecipients: false,
                 gifts: boxGifts,
-                dropAction: (giftId) => giftsView.reassignGiftToPerson(giftId, personName, personName)
+                dropAction: (giftId, srcCtx) => giftsView.reassignGiftToPerson(giftId, personName, srcCtx?.boxPerson || null)
             });
         });
 
         const casaAllGifts = filteredGifts.filter(g => isGiftForCasaAll(giftsView.getRecipientsList(g)));
-        if (!hasPersonFilter || showCasaAllSelected) {
+        if ((!hasPersonFilter || showCasaAllSelected) && (!hideEmpty || casaAllGifts.length > 0)) {
             casaBoxes.push({
                 boxId: 'casa:all',
                 title: `🏠 Casa / Els ${casaMembers.length}`,
@@ -579,6 +598,7 @@ export const giftsView = {
         directList.forEach(memberName => {
             if (hasPersonFilter && !activePeople.has(memberName)) return;
             const boxGifts = filteredGifts.filter(g => giftsView.getRecipientsList(g).includes(memberName));
+            if (hideEmpty && boxGifts.length === 0) return;
             directBoxes.push({
                 boxId: `person:${memberName}`,
                 title: core.formatMemberLabel(memberName),
@@ -611,7 +631,7 @@ export const giftsView = {
         });
 
         const altresBoxes = [];
-        if (!hasPersonFilter || ext1Selected) {
+        if ((!hasPersonFilter || ext1Selected) && (!hideEmpty || ext1Gifts.length > 0)) {
             altresBoxes.push({
                 boxId: 'ext:1',
                 title: `🌿 ${cfg.ext1Name}`,
@@ -625,7 +645,7 @@ export const giftsView = {
                 dropAction: (giftId) => core.openModal(giftId)
             });
         }
-        if (!hasPersonFilter || ext2Selected) {
+        if ((!hasPersonFilter || ext2Selected) && (!hideEmpty || ext2Gifts.length > 0)) {
             altresBoxes.push({
                 boxId: 'ext:2',
                 title: `🌿 ${cfg.ext2Name}`,
@@ -757,6 +777,7 @@ export const giftsView = {
     },
 
     reassignGiftToPerson: (giftId, destPerson, sourcePerson = null) => {
+        if (sourcePerson && sourcePerson === destPerson) return;
         const g = (core.data.gifts || []).find(x => x.id === giftId);
         if (!g) return;
         const d = core.resolveGiftDisplay(g);
