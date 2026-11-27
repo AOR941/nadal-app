@@ -322,7 +322,7 @@ export const core = {
 
         div.onclick = () => {
             if (!d.isOthersSecret) core.openModal(g.id);
-            else alert(`Top Secret! 🤫 Això és cosa de ${g.createdBy}`);
+            else core.openUnlockModal(g.createdBy);
         };
 
         const subtitleParts = [];
@@ -1189,34 +1189,155 @@ const recipsBox = document.getElementById('gRecipientsContainer');
         e.target.value = '';
     },
 
-    openUnlockModal: () => document.getElementById('unlockModal').style.display = 'block',
-    unlock: () => {
-        const u = document.getElementById('unlockUser').value;
-        const p = document.getElementById('unlockPin').value;
-        if (!p) return alert("Has de posar un PIN!");
+  selectUnlockUser: (userName) => {
+        const sel = document.getElementById('unlockUser');
+        if (sel) sel.value = userName;
+        document.querySelectorAll('#unlockUserChips .unlock-user-chip').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.user === userName);
+        });
+        const pinEl = document.getElementById('unlockPin');
+        if (pinEl) {
+            pinEl.focus();
+            pinEl.select();
+        }
+    },
 
-        if (!core.data.pins[u]) {
-            core.data.pins[u] = p;
-            core.saveLocal();
-            alert(`PIN guardat per a ${u}. Si l'oblides, el pots llegir exportant l'arxiu.`);
-        } else if (core.data.pins[u] !== p) {
-            return alert("PIN incorrecte! 🛑");
+    openUnlockModal: (preselectUser = null) => {
+        const cfg = core.getConfig();
+        const parents = cfg.parents || [];
+        const pins = core.data.pins || {};
+
+        let chosen = preselectUser && parents.includes(preselectUser) ? preselectUser : null;
+        if (!chosen && core.currentUser && parents.length > 1) {
+            chosen = parents.find(p => p !== core.currentUser) || parents[0];
+        }
+        if (!chosen) chosen = parents[0] || '';
+
+        const chipsWrap = document.getElementById('unlockUserChips');
+        if (chipsWrap) {
+            chipsWrap.innerHTML = parents.map(u => {
+                const isActive = u === chosen;
+                const safeArg = u.replace(/'/g, "\\'");
+                return `<button type="button" class="unlock-user-chip ${isActive ? 'active' : ''}" data-user="${core.escapeHtml(u)}" onclick="app.selectUnlockUser('${safeArg}')">👤 ${core.escapeHtml(u)}</button>`;
+            }).join('');
         }
 
-        core.currentUser = u; core.pin = p;
-        document.getElementById('userStatus').innerHTML = `🕵️‍♂️ Sessió: <b>${u}</b>`;
+        const sel = document.getElementById('unlockUser');
+        if (sel && chosen) sel.value = chosen;
+
+        const errEl = document.getElementById('unlockError');
+        if (errEl) { errEl.textContent = ''; errEl.classList.add('hidden'); }
+
+        const allHavePins = parents.length > 0 && parents.every(u => Boolean(pins[u]));
+        const hintEl = document.getElementById('unlockHint');
+        if (hintEl) {
+            hintEl.textContent = allHavePins
+                ? "Escriu el teu PIN: l'app et reconeixerà automàticament."
+                : "Selecciona qui ets, escriu el PIN i prem Enter.";
+        }
+
+        const pinEl = document.getElementById('unlockPin');
+        if (pinEl) pinEl.value = '';
+
+        document.getElementById('unlockModal').style.display = 'block';
+        setTimeout(() => { if (pinEl) pinEl.focus(); }, 30);
+    },
+
+    completeUnlock: (u, p) => {
+        core.currentUser = u;
+        core.pin = p;
+        document.getElementById('userStatus').innerHTML = `🕵️‍♂️ <b>${core.escapeHtml(u)}</b>`;
         document.getElementById('btnUnlock').classList.add('hidden');
         document.getElementById('btnLock').classList.remove('hidden');
+        const pinEl = document.getElementById('unlockPin');
+        if (pinEl) pinEl.value = '';
         core.closeModal('unlockModal');
         core.renderAll();
     },
 
+    onUnlockPinInput: () => {
+        const errEl = document.getElementById('unlockError');
+        if (errEl) errEl.classList.add('hidden');
+
+        const pinEl = document.getElementById('unlockPin');
+        const p = (pinEl?.value || '').trim();
+        if (!p) return;
+
+        const cfg = core.getConfig();
+        const parents = cfg.parents || [];
+        const pins = core.data.pins || {};
+        const selectedUser = document.getElementById('unlockUser')?.value || '';
+        const allHavePins = parents.length > 0 && parents.every(u => Boolean(pins[u]));
+
+        // Si s'està creant un PIN nou per a un usuari sense PIN, esperar a prémer Enter
+        if (!allHavePins && selectedUser && !pins[selectedUser]) return;
+
+        const exactMatches = parents.filter(u => pins[u] && String(pins[u]) === p);
+        const longerPrefixMatches = parents.filter(u =>
+            pins[u] && String(pins[u]).startsWith(p) && String(pins[u]).length > p.length
+        );
+
+        if (exactMatches.length === 1 && longerPrefixMatches.length === 0) {
+            core.completeUnlock(exactMatches[0], p);
+        }
+    },
+
+    unlock: () => {
+        const cfg = core.getConfig();
+        const parents = cfg.parents || [];
+        if (!core.data.pins) core.data.pins = {};
+
+        const u = document.getElementById('unlockUser')?.value || parents[0] || '';
+        const pinEl = document.getElementById('unlockPin');
+        const p = (pinEl?.value || '').trim();
+        const errEl = document.getElementById('unlockError');
+
+        const showErr = (msg) => {
+            if (errEl) {
+                errEl.textContent = msg;
+                errEl.classList.remove('hidden');
+            }
+            if (pinEl) {
+                pinEl.value = '';
+                pinEl.focus();
+            }
+        };
+
+        if (!p) return showErr("Escriu el teu PIN numèric.");
+
+        // 1. Si l'usuari seleccionat encara no té PIN, el guardem comprovant que no estigui repetit
+        if (!core.data.pins[u]) {
+            const duplicateUser = parents.find(other => other !== u && core.data.pins[other] && String(core.data.pins[other]) === p);
+            if (duplicateUser) {
+                return showErr("Aquest PIN ja el fa servir un altre usuari. Tria'n un de diferent.");
+            }
+            core.data.pins[u] = p;
+            core.saveLocal();
+            return core.completeUnlock(u, p);
+        }
+
+        // 2. Comprovació contra l'usuari seleccionat
+        if (String(core.data.pins[u]) === p) {
+            return core.completeUnlock(u, p);
+        }
+
+        // 3. Si coincideix de manera única amb l'altre usuari, hi entrem directament
+        const otherMatches = parents.filter(other => core.data.pins[other] && String(core.data.pins[other]) === p);
+        if (otherMatches.length === 1) {
+            return core.completeUnlock(otherMatches[0], p);
+        }
+
+        showErr("PIN incorrecte 🛑");
+    },
+
     lock: () => {
-        core.currentUser = null; core.pin = null;
+        core.currentUser = null;
+        core.pin = null;
         document.getElementById('userStatus').innerHTML = `👨‍👩‍👧‍👧 Vista Familiar`;
         document.getElementById('btnUnlock').classList.remove('hidden');
         document.getElementById('btnLock').classList.add('hidden');
-        document.getElementById('unlockPin').value = '';
+        const pinEl = document.getElementById('unlockPin');
+        if (pinEl) pinEl.value = '';
         core.renderAll();
     },
 
