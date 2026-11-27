@@ -366,9 +366,17 @@ export const core = {
             }
         }
 
+        const trackingIconHtml = (!d.isOthersSecret && d.tracking)
+            ? `<span class="card-tracking-icon" title="Tracking actiu">🎯</span>`
+            : '';
+
         const stateBadgeHtml = opts.hideStateBadge
             ? ''
-            : `<div><span class="badge ${stateKey}">${core.escapeHtml(g.state)}</span></div>`;
+            : `<span class="badge ${stateKey}">${core.escapeHtml(g.state)}</span>`;
+
+        const headerRightHtml = (trackingIconHtml || stateBadgeHtml)
+            ? `<div class="card-header-right">${trackingIconHtml}${stateBadgeHtml}</div>`
+            : '';
 
         const subtitleHtml = subtitleParts.length > 0
             ? `<div class="card-subtitle">${subtitleParts.join(' <span class="card-sep">·</span> ')}</div>`
@@ -377,7 +385,7 @@ export const core = {
         let content = `
             <div class="card-header">
                 <div class="card-title">${d.isExpense ? '🎄 ' : ''}${core.escapeHtml(d.titleDisplay)}</div>
-                ${stateBadgeHtml}
+                ${headerRightHtml}
             </div>
             ${subtitleHtml}
         `;
