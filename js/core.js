@@ -334,20 +334,27 @@ export const core = {
                 subtitleParts.push(core.escapeHtml(g.event));
             }
         } else {
-            const formattedRecips = d.recips.map(core.formatMemberLabel).join(', ');
+            const formattedList = d.recips.map(core.formatMemberLabel);
+            const fullRecipsStr = formattedList.join(', ');
+            const compactRecips = formattedList.length > 3
+                ? `${formattedList.slice(0, 2).join(', ')} +${formattedList.length - 2}`
+                : fullRecipsStr;
+
             if (opts.boxPerson) {
-                if (d.recips.length > 1 || d.recips[0] !== opts.boxPerson) {
-                    subtitleParts.push(`👥 Compartit: <b>${core.escapeHtml(formattedRecips)}</b>`);
+                if (d.recips.length > 3) {
+                    subtitleParts.push(`<span title="${core.escapeHtml(fullRecipsStr)}">👥 <b>Compartit (${d.recips.length})</b></span>`);
+                } else if (d.recips.length > 1 || d.recips[0] !== opts.boxPerson) {
+                    subtitleParts.push(`👥 <b>${core.escapeHtml(fullRecipsStr)}</b>`);
                 }
             } else if (opts.isCasaAllBox) {
                 const isExactCasa = cfg.casaMembers.length > 1
                     && d.recips.length === cfg.casaMembers.length
                     && cfg.casaMembers.every(m => d.recips.includes(m));
-                if (!isExactCasa && formattedRecips) {
-                    subtitleParts.push(`👤 <b>${core.escapeHtml(formattedRecips)}</b>`);
+                if (!isExactCasa && compactRecips) {
+                    subtitleParts.push(`<span title="${core.escapeHtml(fullRecipsStr)}">👤 <b>${core.escapeHtml(compactRecips)}</b></span>`);
                 }
-            } else if (formattedRecips) {
-                subtitleParts.push(`👤 <b>${core.escapeHtml(formattedRecips)}</b>`);
+            } else if (compactRecips) {
+                subtitleParts.push(`<span title="${core.escapeHtml(fullRecipsStr)}">👤 <b>${core.escapeHtml(compactRecips)}</b></span>`);
             }
 
             if (!opts.hideEvent) {
@@ -387,21 +394,33 @@ export const core = {
                 : '';
 
             if (d.isOtherHouse) {
-                if (d.priceVal > 0) {
+                if (priceFormatted) {
                     content += `<div class="card-price is-other">${priceFormatted} <span class="card-price-note">(orientatiu)</span></div>`;
                 }
                 const houseBadge = opts.hideOtherHouseBadge ? '' : `<span class="badge other-house">🏡 D'una altra casa</span>`;
                 content += `<div class="card-from-row">${houseBadge}🤝 De part de: <b>${core.escapeHtml(fromsText || 'Altres')}</b></div>`;
             } else {
-                const approxTag = (d.priceVal > 0 && g.isApprox) ? `<span class="badge approx">Aproximat</span>` : '';
-                content += `<div class="card-price ${d.isExpense ? 'is-expense' : ''}">${priceFormatted || '? €'}${approxTag}</div>`;
-
-                if (!d.isExpense && fromsText) {
-                    content += `<div class="card-from-row">🤝 De part de: <b>${core.escapeHtml(fromsText)}</b></div>`;
+                if (priceFormatted) {
+                    const approxTag = g.isApprox ? `<span class="badge approx">Aproximat</span>` : '';
+                    content += `<div class="card-price ${d.isExpense ? 'is-expense' : ''}">${priceFormatted}${approxTag}</div>`;
                 }
-                if (!d.isExpense && d.jointContributors.length > 0) {
-                    const jointStr = d.jointContributors.map(core.formatMemberLabel).join(', ');
-                    content += `<div class="card-meta-row"><span class="badge joint-badge">🤝 Conjunt amb: ${core.escapeHtml(jointStr)}</span></div>`;
+
+                if (!d.isExpense) {
+                    const parents = cfg.parents || [];
+                    const isDefaultParentsOnly = parents.length > 0
+                        && d.froms.length === parents.length
+                        && parents.every(p => d.froms.includes(p));
+                    const isJointWithDefaultParents = d.jointContributors.length > 0
+                        && parents.every(p => d.froms.includes(p))
+                        && d.froms.length === parents.length + d.jointContributors.length;
+
+                    if (fromsText && !isDefaultParentsOnly && !isJointWithDefaultParents) {
+                        content += `<div class="card-from-row">🤝 De part de: <b>${core.escapeHtml(fromsText)}</b></div>`;
+                    }
+                    if (d.jointContributors.length > 0) {
+                        const jointStr = d.jointContributors.map(core.formatMemberLabel).join(', ');
+                        content += `<div class="card-meta-row"><span class="badge joint-badge">🤝 Conjunt amb: ${core.escapeHtml(jointStr)}</span></div>`;
+                    }
                 }
             }
 
@@ -1761,19 +1780,17 @@ switchMainView: (view) => {
         const { totals } = core.computeEconomicTree();
         const execPct = totals.limit > 0 ? Math.round((totals.spent / totals.limit) * 100) : 0;
 
-        document.getElementById('budgetPrevist').innerText = totals.limit.toFixed(0) + ' €';
-        document.getElementById('budgetGastat').innerText = totals.spent.toFixed(2) + ' €';
+        const pctEl = document.getElementById('budgetPct');
+        if (pctEl) pctEl.innerText = `${execPct}%`;
 
-        const subEl = document.getElementById('budgetGastatSub');
-        if (totals.spentApprox > 0) {
-            subEl.innerText = `Def: ${totals.spentDefinitive.toFixed(0)}€ · ~Aprox: ${totals.spentApprox.toFixed(0)}€`;
-            subEl.classList.remove('hidden');
-        } else {
-            subEl.classList.add('hidden');
+        const pillEl = document.getElementById('budgetPillBtn');
+        if (pillEl) pillEl.classList.toggle('is-over', execPct > 100);
+
+        const barEl = document.getElementById('headerProgressBar');
+        if (barEl) {
+            barEl.style.width = `${Math.min(execPct, 100)}%`;
+            barEl.classList.toggle('is-over', execPct > 100);
         }
-
-        document.getElementById('budgetPct').innerText = execPct + '%';
-        document.getElementById('headerProgressBar').style.width = Math.min(execPct, 100) + '%';
     },
 
     openBudgetsModal: (defaultTab = 'ratios') => {
