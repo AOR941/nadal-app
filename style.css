@@ -1425,4 +1425,476 @@ header h2 { font-size: 1.25em; margin-top: 2px; }
 .badge.descartat, .mini-badge.descartat {
     background: #eceff1;
     color: #6c7a89;
+
+/* ==========================================================================
+ * V9.0: REGALS UNIFICATS, DESPESES, TARGETES COMPARTIDES I MODAL MODERN
+ * ========================================================================== */
+
+/* 1. Barra superior neta i calaix de filtres de Regals */
+.gifts-top-bar {
+    background: #fff;
+    border: 1px solid #ece5d8;
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+}
+
+.gifts-mode-switch {
+    display: inline-flex;
+    background: #f2eee6;
+    padding: 3px;
+    border-radius: 10px;
+    gap: 3px;
+    margin-bottom: 10px;
+}
+
+.gifts-mode-btn {
+    width: auto;
+    margin: 0;
+    padding: 7px 13px;
+    font-size: 0.86em;
+    font-weight: 700;
+    background: transparent;
+    color: #524c42;
+    border-radius: 8px;
+    white-space: nowrap;
+}
+.gifts-mode-btn.active {
+    background: var(--c-red);
+    color: #fff;
+    box-shadow: 0 1px 4px rgba(179, 0, 12, 0.22);
+}
+
+.gifts-controls-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.gifts-search-input {
+    flex: 1 1 170px;
+    min-width: 140px;
+    margin-top: 0 !important;
+    padding: 9px 12px !important;
+    font-size: 0.9em !important;
+    background: #faf8f4;
+}
+
+.gifts-event-select {
+    width: auto;
+    min-width: 155px;
+    margin-top: 0 !important;
+    padding: 9px 10px !important;
+    font-size: 0.88em !important;
+    background: #faf8f4;
+}
+
+.gifts-tracking-btn {
+    width: auto;
+    margin: 0;
+    padding: 9px 12px;
+    font-size: 0.86em;
+    font-weight: 700;
+    background: #f4f6f7;
+    color: #2c3e50;
+    border: 1px solid #d5dbdb;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+.gifts-tracking-btn.active {
+    background: #165b33;
+    color: #fff;
+    border-color: #0f4023;
+}
+.tracking-count {
+    background: rgba(0,0,0,0.08);
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 0.85em;
+}
+.gifts-tracking-btn.active .tracking-count {
+    background: rgba(255,255,255,0.22);
+}
+
+.gifts-filters-drawer {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed #e6dfd1;
+}
+.gifts-filters-drawer.collapsed { display: none; }
+
+.gifts-person-select-wrap { margin-top: 8px; max-width: 320px; }
+.gifts-person-select-wrap select {
+    margin-top: 0 !important;
+    padding: 8px 10px !important;
+    font-size: 0.86em !important;
+    background: #faf8f4;
+}
+
+.gifts-drawer-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding-top: 6px;
+    border-top: 1px dashed #ece5d8;
+}
+
+.kanban-sub-header {
+    background: #e8e2d5;
+    color: var(--c-green-dark);
+    font-size: 0.78em;
+    font-weight: 800;
+    padding: 4px 8px;
+    border-radius: 6px;
+    margin: 8px 0 6px 0;
+}
+.kanban-sub-header:first-child { margin-top: 0; }
+
+/* 2. Detalls de la targeta unificada (Mapa, Kanban i Despeses) */
+.card-subtitle {
+    font-size: 0.84em;
+    color: #555;
+    margin-bottom: 6px;
+    line-height: 1.35;
+}
+.card-sep { color: #b5aea2; margin: 0 2px; }
+.card-meta-row { margin: 5px 0; }
+.card-price {
+    font-weight: 800;
+    color: var(--c-red);
+    font-size: 1.06em;
+    margin-top: 4px;
+}
+.card-price.is-expense { color: var(--c-green-dark); }
+.card-price.is-other { color: #555; font-size: 0.94em; }
+.card-price-note { font-weight: normal; font-size: 0.84em; color: #777; }
+.card-from-row {
+    font-size: 0.84em;
+    color: #444;
+    margin-top: 5px;
+    line-height: 1.35;
+}
+.card-comment-preview {
+    font-size: 0.83em;
+    color: #444;
+    background: rgba(248, 249, 250, 0.9);
+    border: 1px solid #ececec;
+    padding: 6px 8px;
+    border-radius: 7px;
+    margin-top: 7px;
+    font-style: italic;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+}
+.card-link-row { margin-top: 7px; }
+.card-shop-link {
+    color: var(--c-green-dark);
+    font-size: 0.84em;
+    text-decoration: none;
+    font-weight: 700;
+}
+.card-shop-link:hover { text-decoration: underline; }
+.badge.round-badge { background: #f5efe6; color: #6e4726; border: 1px solid #e2d3be; }
+
+/* 3. Pestanya de Despeses Nadalenques */
+.expenses-summary-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    border-left: 5px solid var(--c-green);
+}
+.expenses-add-btn {
+    width: auto;
+    margin: 0;
+    padding: 8px 14px;
+    font-size: 0.86em;
+    border-radius: 9px;
+}
+.expenses-toolbar {
+    background: #fff;
+    border: 1px solid #ece5d8;
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.04);
+}
+.expenses-filters-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.expenses-filters-row select {
+    flex: 1 1 190px;
+    margin-top: 0 !important;
+    padding: 9px 10px !important;
+    font-size: 0.88em !important;
+    background: #faf8f4;
+}
+
+.expenses-cat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 14px;
+    align-items: start;
+}
+.expense-cat-section {
+    background: #fff;
+    border: 1px solid #e4ddd0;
+    border-top: 4px solid var(--c-green);
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.expense-cat-section.drag-over {
+    background: #eafaf1;
+    border-color: var(--c-green);
+    box-shadow: inset 0 0 0 2px rgba(22, 91, 51, 0.25);
+}
+.expense-cat-section.is-empty { background: #faf8f4; opacity: 0.86; }
+.expense-cat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #efe9dd;
+}
+.expense-cat-title { font-weight: 800; font-size: 0.98em; color: #222; }
+.expense-cat-meta {
+    font-size: 0.78em;
+    color: #555;
+    margin-top: 3px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.expense-cat-body .card { margin-bottom: 9px; }
+.expense-cat-body .card:last-child { margin-bottom: 0; }
+.expense-advent-link-box {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    background: #fffdf4;
+    border: 1px dashed #f3c65f;
+    border-radius: 8px;
+    padding: 7px 9px;
+    margin-bottom: 9px;
+    font-size: 0.8em;
+    color: #6d5308;
+}
+.expense-advent-link-box .preset-btn {
+    flex: 0 0 auto;
+    padding: 4px 8px;
+    font-size: 0.88em;
+}
+
+/* 4. Nou modal d'edició: pantalla completa al mòbil + 2 columnes al PC */
+.gift-modal-card {
+    display: flex;
+    flex-direction: column;
+    padding: 0 !important;
+    overflow: hidden;
+}
+
+.gift-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    border-bottom: 1px solid #ece5d8;
+    background: #fff;
+    flex-shrink: 0;
+}
+.gift-modal-header h2 { font-size: 1.15em; margin: 0; color: #222; }
+
+.modal-close-icon {
+    width: 34px;
+    height: 34px;
+    margin: 0;
+    padding: 0;
+    border-radius: 50%;
+    background: #f2eee6;
+    color: #444;
+    font-size: 1em;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.modal-close-icon:hover { background: #e5dfd2; }
+
+.gift-modal-body {
+    padding: 16px 18px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.gift-type-tabs { margin-bottom: 14px; }
+
+.gift-modal-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Xips clicables de persones */
+.chips-box {
+    border: 1px solid #d8d0c2;
+    border-radius: 10px;
+    padding: 10px;
+    margin-top: 6px;
+    background: #faf8f4;
+    max-height: 220px;
+    overflow-y: auto;
+}
+.chip-group { margin-bottom: 10px; }
+.chip-group:last-child { margin-bottom: 0; }
+.chip-group-title {
+    font-size: 0.72em;
+    font-weight: 800;
+    color: var(--c-green-dark);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 5px;
+}
+.chip-group-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.person-chip {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+    margin: 0;
+}
+.person-chip input[type="checkbox"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+.person-chip span {
+    display: inline-block;
+    padding: 6px 11px;
+    border-radius: 18px;
+    background: #fff;
+    color: #333;
+    border: 1px solid #cfc6b6;
+    font-size: 0.85em;
+    font-weight: 600;
+    transition: all 0.12s ease;
+}
+.person-chip input:checked + span {
+    background: var(--c-green);
+    color: #fff;
+    border-color: var(--c-green-dark);
+    box-shadow: 0 2px 5px rgba(22, 91, 51, 0.22);
+}
+
+.toggle-tracking {
+    background: #f4f6f9;
+    border: 1.5px solid #9ab0c4;
+    padding: 11px 12px;
+    border-radius: 9px;
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.9em;
+    color: #1f3a52;
+    cursor: pointer;
+}
+.toggle-tracking input { width: 20px; height: 20px; margin: 0; flex-shrink: 0; }
+
+.secret-toggle-box {
+    background: #f4e8fb;
+    padding: 10px 12px;
+    border-radius: 9px;
+    margin-top: 12px;
+    border-left: 4px solid #8e44ad;
+    font-size: 0.9em;
+}
+
+#gComments {
+    min-height: 115px;
+    line-height: 1.45;
+    resize: vertical;
+}
+
+.gift-modal-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px 18px calc(12px + env(safe-area-inset-bottom)) 18px;
+    border-top: 1px solid #ece5d8;
+    background: #faf8f4;
+    flex-shrink: 0;
+}
+.gift-footer-secondary { display: flex; gap: 8px; }
+.gift-footer-primary { display: flex; gap: 8px; margin-left: auto; }
+
+.gift-modal-footer button {
+    width: auto;
+    margin: 0;
+    padding: 10px 16px;
+    font-size: 0.9em;
+    border-radius: 9px;
+}
+.btn-save-main { background: var(--c-green); color: #fff; min-width: 110px; }
+.btn-cancel-subtle { background: #e8e2d5; color: #333; }
+.danger-muted { background: #fbeae8; color: var(--c-red); border: 1px solid #f2c5c0 !important; }
+
+/* Mòbil: modal a pantalla completa */
+@media (max-width: 768px) {
+    .modal.modal-fullscreen-mobile .gift-modal-card {
+        width: 100%;
+        max-width: 100%;
+        height: 100vh;
+        height: 100dvh;
+        margin: 0;
+        border-radius: 0;
+    }
+    .gift-footer-primary { flex: 1; justify-content: flex-end; }
+    .gift-footer-primary .btn-save-main { flex: 1; }
+}
+
+/* Escriptori: modal ample de 2 columnes */
+@media (min-width: 820px) {
+    .gift-modal-card {
+        max-width: 860px !important;
+        max-height: calc(100vh - 36px);
+        margin: 18px auto !important;
+    }
+    .gift-modal-grid {
+        display: grid;
+        grid-template-columns: 1.25fr 1fr;
+        gap: 20px;
+        align-items: start;
+    }
+    .gift-modal-grid.is-expense-mode {
+        grid-template-columns: 1.35fr 0.85fr;
+    }
+    .chips-box { max-height: 260px; }
+}
 }
