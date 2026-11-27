@@ -22,7 +22,7 @@
                 <div class="top-bar">
                     <div class="header-brand">
                         <span class="header-logo">🎄 Nadal Tracker</span>
-                        <span id="userStatus" class="header-user-tag">👨‍👩‍👧‍👧 Vista Familiar</span>
+                        <span id="userStatus" class="header-user-tag" onclick="app.openUnlockModal()" title="Identificar-se o canviar d'usuari" style="cursor:pointer;">👨‍👩‍👧‍👧 Vista Familiar</span>
                     </div>
                     <div class="top-bar-actions">
                         <button type="button" id="budgetPillBtn" class="header-pill-btn budget-pill" onclick="app.openBudgetsModal('ratios')" title="Obrir Control Econòmic">
@@ -205,17 +205,27 @@
     </div>
 
     <!-- MODAL: DESBLOQUEJAR SECRETS -->
-    <div id="unlockModal" class="modal">
-        <div class="modal-content">
-            <h2>🔒 Desbloquejar Secrets</h2>
-            <p style="font-size: 0.9em; margin-bottom: 15px;">Selecciona qui ets per veure i afegir els teus regals "Top Secret".</p>
-            <select id="unlockUser"></select>
-            <input type="password" id="unlockPin" pattern="[0-9]*" inputmode="numeric" placeholder="El teu PIN numèric">
-            
-            <div style="display:flex; gap:10px; margin-top: 20px;">
-                <button onclick="app.unlock()">Entrar</button>
-                <button class="danger" onclick="app.closeModal('unlockModal')">Cancel·lar</button>
+    <div id="unlockModal" class="modal" onclick="if (event.target === this) app.closeModal('unlockModal')">
+        <div class="modal-content unlock-modal-card">
+            <div class="gift-modal-header" style="padding:0 0 12px 0; margin-bottom:14px;">
+                <h2>🔒 Identificar-se</h2>
+                <button type="button" class="modal-close-icon" onclick="app.closeModal('unlockModal')" title="Tancar">✕</button>
             </div>
+
+            <form onsubmit="event.preventDefault(); app.unlock();">
+                <select id="unlockUser" class="hidden"></select>
+                <div id="unlockUserChips" class="unlock-user-chips"></div>
+
+                <input type="password" id="unlockPin" class="unlock-pin-input" pattern="[0-9]*" inputmode="numeric" autocomplete="one-time-code" placeholder="Escriu el teu PIN" oninput="app.onUnlockPinInput()" onkeydown="if (event.key === 'Escape') app.closeModal('unlockModal')">
+
+                <div id="unlockError" class="unlock-error hidden"></div>
+                <div id="unlockHint" class="unlock-hint"></div>
+
+                <div class="unlock-actions">
+                    <button type="submit" class="btn-save-main">Entrar</button>
+                    <button type="button" class="btn-cancel-subtle" onclick="app.closeModal('unlockModal')">Cancel·lar</button>
+                </div>
+            </form>
         </div>
     </div>
 
