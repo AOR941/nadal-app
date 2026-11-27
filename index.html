@@ -11,24 +11,31 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎄</text></svg>">
     <link id="appleTouchIcon" rel="apple-touch-icon" href="">
     <title>Nadal Tracker 🎄</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=9.1">
 </head>
 <body>
     <div id="pullRefreshIndicator" class="pull-refresh-indicator hidden">⬇️ Estira avall per sincronitzar</div>
 
     <div id="mainApp">
-        <header id="appHeader">
+    <header id="appHeader">
             <div class="header-inner">
                 <div class="top-bar">
-                    <span id="userStatus">👨‍👩‍👧‍👧 Vista Familiar</span>
+                    <div class="header-brand">
+                        <span class="header-logo">🎄 Nadal Tracker</span>
+                        <span id="userStatus" class="header-user-tag">👨‍👩‍👧‍👧 Vista Familiar</span>
+                    </div>
                     <div class="top-bar-actions">
+                        <button type="button" id="budgetPillBtn" class="header-pill-btn budget-pill" onclick="app.openBudgetsModal('ratios')" title="Obrir Control Econòmic">
+                            <span>📊</span>
+                            <span id="budgetPct">0%</span>
+                        </button>
                         <button type="button" id="cloudToggleBtn" class="header-pill-btn" onclick="app.toggleCloudDrawer()" title="Estat del núvol i opcions">
                             <span id="cloudStatusDot">⚪</span>
                             <span id="cloudStatusShort">Local</span>
                             <span class="caret">▾</span>
                         </button>
-                        <span id="btnUnlock" onclick="app.openUnlockModal()" class="header-auth-btn unlock">🔒 Desbloquejar</span>
-                        <span id="btnLock" onclick="app.lock()" class="header-auth-btn lock hidden">🔓 Bloquejar</span>
+                        <span id="btnUnlock" onclick="app.openUnlockModal()" class="header-auth-btn unlock" title="Desbloquejar secrets">🔒</span>
+                        <span id="btnLock" onclick="app.lock()" class="header-auth-btn lock hidden" title="Bloquejar sessió">🔓</span>
                     </div>
                 </div>
 
@@ -48,20 +55,27 @@
                     </div>
                 </div>
 
-                <h2>Nadal Tracker 🎁🎄</h2>
-                <div id="xmasCountdown" class="countdown-pill"></div>
-                <div class="budgets" onclick="app.openBudgetsModal('ratios')" style="cursor: pointer;" title="Clica per veure ràtios, límits i comparativa">
-                    <div><b>Previst</b><span id="budgetPrevist">0 €</span></div>
-                    <div>
-                        <b>Gastat</b>
-                        <span id="budgetGastat">0 €</span>
-                        <span id="budgetGastatSub" class="budget-sub hidden"></span>
+                <!-- Menú de les 4 pantalles integrat a la capçalera -->
+                <nav class="header-nav" aria-label="Navegació principal">
+                    <button type="button" id="navBtnGifts" class="header-nav-btn active" onclick="app.switchMainView('gifts')">
+                        <span>🎁</span><span>Regals</span>
+                    </button>
+                    <button type="button" id="navBtnExpenses" class="header-nav-btn" onclick="app.switchMainView('expenses')">
+                        <span>🎄</span><span>Despeses</span>
+                    </button>
+                    <button type="button" id="navBtnAdvent" class="header-nav-btn" onclick="app.switchMainView('advent')">
+                        <span>🕯️</span><span>Advent</span>
+                    </button>
+                    <button type="button" id="navBtnSantaLlucia" class="header-nav-btn" onclick="app.switchMainView('santallucia')">
+                        <span>🍲</span><span>Sta. Llúcia</span>
+                    </button>
+                </nav>
+
+                <div class="header-bottom-meta">
+                    <div id="xmasCountdown" class="countdown-pill"></div>
+                    <div class="header-progress-wrap" onclick="app.openBudgetsModal('ratios')" title="Execució del pressupost (clica per veure detalls)">
+                        <div id="headerProgressBar" class="header-progress-bar"></div>
                     </div>
-                    <div><b>Executat</b><span id="budgetPct">0%</span></div>
-                    <div style="font-size:1.3em; display:flex; align-items:center;">📊</div>
-                </div>
-                <div class="header-progress-wrap">
-                    <div id="headerProgressBar" class="header-progress-bar"></div>
                 </div>
             </div>
         </header>
@@ -80,27 +94,6 @@
         </footer>
 
         <div id="floatingAddBtn" class="floating-btn" onclick="app.openModal()">+</div>
-
-        <!-- BARRA DE NAVEGACIÓ INFERIOR FIXA -->
-        <nav class="bottom-nav" aria-label="Navegació principal">
-            <button type="button" id="navBtnGifts" class="bottom-nav-btn active" onclick="app.switchMainView('gifts')">
-                <span class="nav-icon">🎁</span>
-                <span class="nav-label">Regals</span>
-            </button>
-            <button type="button" id="navBtnExpenses" class="bottom-nav-btn" onclick="app.switchMainView('expenses')">
-                <span class="nav-icon">🎄</span>
-                <span class="nav-label">Despeses</span>
-            </button>
-            <button type="button" id="navBtnAdvent" class="bottom-nav-btn" onclick="app.switchMainView('advent')">
-                <span class="nav-icon">🕯️</span>
-                <span class="nav-label">Advent</span>
-            </button>
-            <button type="button" id="navBtnSantaLlucia" class="bottom-nav-btn" onclick="app.switchMainView('santallucia')">
-                <span class="nav-icon">🍲</span>
-                <span class="nav-label">Sta. Llúcia</span>
-            </button>
-        </nav>
-    </div>
 
     <!-- MODAL: CONFIGURACIÓ NÚVOL GITHUB I FAMÍLIA -->
     <div id="configModal" class="modal">
