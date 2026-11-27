@@ -87,7 +87,7 @@ export const core = {
 
     currentUser: null,
     pin: null,
-    activeMainView: 'list',
+    activeMainView: 'gifts',
     activeBudgetTab: 'ratios',
     activeConfigTab: 'github',
     econExpanded: {},
@@ -260,6 +260,161 @@ export const core = {
             'Descartat': 'descartat'
         };
         return map[st] || 'idea';
+    },
+
+    getTodayIsoDate: () => {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const d = String(now.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    },
+
+    formatShortDate: (isoStr) => {
+        if (!isoStr || !/^\d{4}-\d{2}-\d{2}$/.test(isoStr)) return isoStr || '';
+        const [, m, d] = isoStr.split('-');
+        const months = ['gen', 'feb', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'oct', 'nov', 'des'];
+        const idx = parseInt(m, 10) - 1;
+        return `${parseInt(d, 10)} ${months[idx] || m}`;
+    },
+
+    getDeliveryMeta: (g, d) => {
+        if (d.isExpense || !d.deliveryDate) return null;
+        if (g.state === 'El tenim' || g.state === 'Embolicat') {
+            return { date: d.deliveryDate, status: 'done', label: `📦 Entrega: ${core.formatShortDate(d.deliveryDate)}` };
+        }
+        const todayStr = core.getTodayIsoDate();
+        if (d.deliveryDate < todayStr) {
+            return { date: d.deliveryDate, status: 'overdue', label: `⚠️ Retard (${core.formatShortDate(d.deliveryDate)})` };
+        }
+        if (d.deliveryDate === todayStr) {
+            return { date: d.deliveryDate, status: 'today', label: `🚚 Arriba avui` };
+        }
+        return { date: d.deliveryDate, status: 'upcoming', label: `🚚 Entrega: ${core.formatShortDate(d.deliveryDate)}` };
+    },
+
+    createCardElement: (g, opts = {}) => {
+        const cfg = core.getConfig();
+        const d = core.resolveGiftDisplay(g);
+        const stateKey = core.getStateCssKey(g.state);
+
+        const div = document.createElement('div');
+        const extClass = d.isExpense ? 'expense' : (d.isOthersSecret ? 'secret' : (d.isOtherHouse ? 'altres' : ''));
+        const stateClass = d.isOthersSecret ? '' : `state-${stateKey}`;
+        div.className = `card ${extClass} ${stateClass}`.trim();
+        div.dataset.giftId = g.id;
+
+        if (opts.draggable && !d.isOthersSecret) {
+            div.draggable = true;
+            div.addEventListener('dragstart', (e) => {
+                div.classList.add('dragging');
+                if (e.dataTransfer) {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', g.id);
+                }
+                if (typeof opts.onDragStart === 'function') opts.onDragStart(g, e);
+            });
+            div.addEventListener('dragend', (e) => {
+                div.classList.remove('dragging');
+                if (typeof opts.onDragEnd === 'function') opts.onDragEnd(g, e);
+            });
+        }
+
+        div.onclick = () => {
+            if (!d.isOthersSecret) core.openModal(g.id);
+            else alert(`Top Secret! 🤫 Això és cosa de ${g.createdBy}`);
+        };
+
+        const subtitleParts = [];
+        if (d.isExpense) {
+            if (!opts.hideExpenseCat) {
+                subtitleParts.push(`<span class="badge expense-cat">${core.escapeHtml(g.expenseCat || '🎄 Despesa')}</span>`);
+            }
+            if (!opts.hideEvent && g.event && g.event !== '✨ General Festes') {
+                subtitleParts.push(core.escapeHtml(g.event));
+            }
+        } else {
+            const formattedRecips = d.recips.map(core.formatMemberLabel).join(', ');
+            if (opts.boxPerson) {
+                if (d.recips.length > 1 || d.recips[0] !== opts.boxPerson) {
+                    subtitleParts.push(`👥 Compartit: <b>${core.escapeHtml(formattedRecips)}</b>`);
+                }
+            } else if (opts.isCasaAllBox) {
+                const isExactCasa = cfg.casaMembers.length > 1
+                    && d.recips.length === cfg.casaMembers.length
+                    && cfg.casaMembers.every(m => d.recips.includes(m));
+                if (!isExactCasa && formattedRecips) {
+                    subtitleParts.push(`👤 <b>${core.escapeHtml(formattedRecips)}</b>`);
+                }
+            } else if (formattedRecips) {
+                subtitleParts.push(`👤 <b>${core.escapeHtml(formattedRecips)}</b>`);
+            }
+
+            if (!opts.hideEvent) {
+                const evText = core.escapeHtml(g.event || '❓ Per decidir');
+                const roundText = (g.round && !opts.hideRound) ? ` (${core.escapeHtml(g.round)})` : '';
+                subtitleParts.push(`${evText}${roundText}`);
+            } else if (g.round && !opts.hideRound) {
+                subtitleParts.push(`<span class="badge round-badge">🪵 ${core.escapeHtml(g.round)}</span>`);
+            }
+        }
+
+        const stateBadgeHtml = opts.hideStateBadge
+            ? ''
+            : `<div><span class="badge ${stateKey}">${core.escapeHtml(g.state)}</span></div>`;
+
+        const subtitleHtml = subtitleParts.length > 0
+            ? `<div class="card-subtitle">${subtitleParts.join(' <span class="card-sep">·</span> ')}</div>`
+            : '';
+
+        let content = `
+            <div class="card-header">
+                <div class="card-title">${d.isExpense ? '🎄 ' : ''}${core.escapeHtml(d.titleDisplay)}</div>
+                ${stateBadgeHtml}
+            </div>
+            ${subtitleHtml}
+        `;
+
+        if (!d.isOthersSecret) {
+            const delivMeta = core.getDeliveryMeta(g, d);
+            if (delivMeta) {
+                content += `<div class="card-meta-row"><span class="badge delivery-badge ${delivMeta.status}">${core.escapeHtml(delivMeta.label)}</span></div>`;
+            }
+
+            const fromsText = d.froms.map(core.formatMemberLabel).join(', ');
+            const priceFormatted = d.priceVal > 0
+                ? `${g.isApprox ? '~' : ''}${Number(d.priceVal.toFixed(2)).toLocaleString('ca-ES')} €`
+                : '';
+
+            if (d.isOtherHouse) {
+                if (d.priceVal > 0) {
+                    content += `<div class="card-price is-other">${priceFormatted} <span class="card-price-note">(orientatiu)</span></div>`;
+                }
+                const houseBadge = opts.hideOtherHouseBadge ? '' : `<span class="badge other-house">🏡 D'una altra casa</span>`;
+                content += `<div class="card-from-row">${houseBadge}🤝 De part de: <b>${core.escapeHtml(fromsText || 'Altres')}</b></div>`;
+            } else {
+                const approxTag = (d.priceVal > 0 && g.isApprox) ? `<span class="badge approx">Aproximat</span>` : '';
+                content += `<div class="card-price ${d.isExpense ? 'is-expense' : ''}">${priceFormatted || '? €'}${approxTag}</div>`;
+
+                if (!d.isExpense && fromsText) {
+                    content += `<div class="card-from-row">🤝 De part de: <b>${core.escapeHtml(fromsText)}</b></div>`;
+                }
+                if (!d.isExpense && d.jointContributors.length > 0) {
+                    const jointStr = d.jointContributors.map(core.formatMemberLabel).join(', ');
+                    content += `<div class="card-meta-row"><span class="badge joint-badge">🤝 Conjunt amb: ${core.escapeHtml(jointStr)}</span></div>`;
+                }
+            }
+
+            if (d.commentsDisplay && d.commentsDisplay.trim()) {
+                content += `<div class="card-comment-preview">📝 ${core.escapeHtml(d.commentsDisplay.trim())}</div>`;
+            }
+            if (d.shopUrl && d.shopUrl.trim()) {
+                content += `<div class="card-link-row"><a href="${core.escapeHtml(d.shopUrl.trim())}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" class="card-shop-link">🛒 Veure enllaç</a></div>`;
+            }
+        }
+
+        div.innerHTML = content;
+        return div;
     },
 
     getEventShortBadges: () => {
@@ -821,7 +976,7 @@ export const core = {
             "Especials": ["Tió", "Reis Mags", "Amics/Altres"]
         };
 
-        const recipsBox = document.getElementById('gRecipientsContainer');
+const recipsBox = document.getElementById('gRecipientsContainer');
         const fromsBox = document.getElementById('gFromContainer');
         const shareBox = document.getElementById('sharePeopleContainer');
 
@@ -832,20 +987,34 @@ export const core = {
 
         Object.entries(tree).forEach(([group, members]) => {
             if (!members || members.length === 0) return;
-            recipsBox.innerHTML += `<div class="multi-group-title">${group}</div>`;
-            fromsBox.innerHTML += `<div class="multi-group-title">${group}</div>`;
-            if (group !== "Especials") shareBox.innerHTML += `<div class="multi-group-title">${group}</div>`;
 
-            members.forEach(m => {
-                const htmlItem = (nameAttr, onChg = '') => `
-                    <label class="multi-item">
-                        <input type="checkbox" name="${nameAttr}" value="${m}" ${onChg}>
-                        <span>${core.formatMemberLabel(m)}</span>
-                    </label>`;
-                recipsBox.innerHTML += htmlItem('gRecipCheck');
-                fromsBox.innerHTML += htmlItem('gFromCheck');
-                if (group !== "Especials") shareBox.innerHTML += htmlItem('sharePersonCheck', 'onchange="app.generateShareText()"');
-            });
+            const buildChipsGroup = (nameAttr) => `
+                <div class="chip-group">
+                    <div class="chip-group-title">${core.escapeHtml(group)}</div>
+                    <div class="chip-group-list">
+                        ${members.map(m => `
+                            <label class="person-chip">
+                                <input type="checkbox" name="${nameAttr}" value="${core.escapeHtml(m)}">
+                                <span>${core.escapeHtml(core.formatMemberLabel(m))}</span>
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+
+            recipsBox.innerHTML += buildChipsGroup('gRecipCheck');
+            fromsBox.innerHTML += buildChipsGroup('gFromCheck');
+
+            if (group !== "Especials") {
+                shareBox.innerHTML += `<div class="multi-group-title">${core.escapeHtml(group)}</div>`;
+                members.forEach(m => {
+                    shareBox.innerHTML += `
+                        <label class="multi-item">
+                            <input type="checkbox" name="sharePersonCheck" value="${core.escapeHtml(m)}" onchange="app.generateShareText()">
+                            <span>${core.escapeHtml(core.formatMemberLabel(m))}</span>
+                        </label>`;
+                });
+            }
         });
 
         for (const v of Object.values(core.views)) {
@@ -1025,12 +1194,13 @@ export const core = {
     },
 
     /* --- [7] NAVEGACIÓ ENTRE VISTES, MODALS, TECLAT I SWIPE-DOWN REFRESH --- */
-    switchMainView: (view) => {
+switchMainView: (view) => {
+        if (view === 'list' || view === 'board') view = 'gifts';
         core.activeMainView = view;
 
         const navMap = {
-            list: 'navBtnList',
-            board: 'navBtnBoard',
+            gifts: 'navBtnGifts',
+            expenses: 'navBtnExpenses',
             advent: 'navBtnAdvent',
             santallucia: 'navBtnSantaLlucia'
         };
@@ -1046,10 +1216,10 @@ export const core = {
             }
         });
 
-        const wideViews = ['list', 'board', 'advent'];
+        const wideViews = ['gifts', 'expenses', 'advent'];
         const mainCont = document.getElementById('mainContainer');
         mainCont.classList.toggle('wide-view', wideViews.includes(view));
-        if (view !== 'list') mainCont.classList.remove('kanban-wide');
+        if (view !== 'gifts' && view !== 'expenses') mainCont.classList.remove('kanban-wide');
 
         const activeViewObj = core.views[view];
         const hideFab = activeViewObj && typeof activeViewObj.hideFloatingBtn === 'function' ? activeViewObj.hideFloatingBtn() : false;
@@ -1063,14 +1233,12 @@ export const core = {
 
     renderAll: () => {
         core.updateBudgetHeader();
-        if (core.views.list && typeof core.views.list.renderFilterPills === 'function') {
-            core.views.list.renderFilterPills();
+        if (core.views.gifts && typeof core.views.gifts.renderFilterPills === 'function') {
+            core.views.gifts.renderFilterPills();
         }
-        if (core.views.list && typeof core.views.list.render === 'function') {
-            core.views.list.render();
-        }
-        if (core.activeMainView !== 'list' && core.views[core.activeMainView] && typeof core.views[core.activeMainView].render === 'function') {
-            core.views[core.activeMainView].render();
+        const activeViewObj = core.views[core.activeMainView];
+        if (activeViewObj && typeof activeViewObj.render === 'function') {
+            activeViewObj.render();
         }
     },
 
@@ -2190,7 +2358,7 @@ export const core = {
         }
     },
 
-    /* --- [9] FORMULARI DE REGALS/DESPESES (DELIVERYDATE + REGALS CONJUNTS + CATEGORIES) --- */
+    /* --- [9] FORMULARI DE REGALS/DESPESES (TRACKING + DECIMALS + CATEGORIES) --- */
     closeModal: (id) => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
@@ -2208,6 +2376,7 @@ export const core = {
     updateStateOptions: (desiredState = null) => {
         const isGift = document.getElementById('gType').value === 'gift';
         const isPaidByUs = !isGift || document.getElementById('gPaidByUs').checked;
+        const isTracking = Boolean(document.getElementById('gTracking')?.checked);
         const stateSel = document.getElementById('gState');
         const lblState = document.getElementById('lblState');
         const lblPrice = document.getElementById('lblPrice');
@@ -2217,21 +2386,37 @@ export const core = {
         if (isGift && !isPaidByUs) {
             paidBox.classList.add('is-other-house');
             paidText.innerText = "🏡 D'una altra casa (No suma al nostre pressupost)";
-            lblState.innerText = "Estat (Regal d'una altra casa):";
             lblPrice.innerText = "Preu orientatiu (€) (Opcional, no suma):";
 
-            stateSel.innerHTML = `
-                <option value="Idea">💡 Idea / Proposta</option>
-                <option value="Confirmat">🤝 Confirmat</option>
-                <option value="Descartat">🚫 Descartat (No suma ni es mostra)</option>
-            `;
-            stateSel.value = (desiredState && ['Idea', 'Confirmat', 'Descartat'].includes(desiredState)) ? desiredState : 'Confirmat';
+            if (isTracking) {
+                lblState.innerText = "Estat (Altra casa · 🎯 en fem seguiment):";
+                const allowed = ['Idea', 'Decidit', 'Comprat/Delivery', 'El tenim', 'Embolicat', 'Confirmat', 'Descartat'];
+                stateSel.innerHTML = `
+                    <option value="Idea">💡 Idea / Proposta</option>
+                    <option value="Decidit">🎯 Decidit, pendent de comprar</option>
+                    <option value="Comprat/Delivery">🚚 Comprat / En camí</option>
+                    <option value="El tenim">✅ El tenim</option>
+                    <option value="Embolicat">🎀 Embolicat</option>
+                    <option value="Confirmat">🤝 Confirmat</option>
+                    <option value="Descartat">🚫 Descartat (No suma ni es mostra)</option>
+                `;
+                stateSel.value = (desiredState && allowed.includes(desiredState)) ? desiredState : 'Decidit';
+            } else {
+                lblState.innerText = "Estat (Regal d'una altra casa):";
+                stateSel.innerHTML = `
+                    <option value="Idea">💡 Idea / Proposta</option>
+                    <option value="Confirmat">🤝 Confirmat</option>
+                    <option value="Descartat">🚫 Descartat (No suma ni es mostra)</option>
+                `;
+                stateSel.value = (desiredState && ['Idea', 'Confirmat', 'Descartat'].includes(desiredState)) ? desiredState : 'Confirmat';
+            }
         } else {
             paidBox.classList.remove('is-other-house');
             paidText.innerText = "💰 Ho paguem nosaltres (Anotar la nostra aportació)";
             lblState.innerText = "Estat (Idees, Decidits i Descartats no sumen a Gastat):";
             lblPrice.innerText = "Preu (€ — nostra part) i Tipus d'Import:";
 
+            const allowed = ['Idea', 'Decidit', 'Comprat/Delivery', 'El tenim', 'Embolicat', 'Descartat'];
             stateSel.innerHTML = `
                 <option value="Idea">💡 Idea / Previst (No suma despesa)</option>
                 <option value="Decidit">🎯 Decidit, pendent de comprar</option>
@@ -2240,7 +2425,7 @@ export const core = {
                 <option value="Embolicat">🎀 Embolicat</option>
                 <option value="Descartat">🚫 Descartat (No suma ni es mostra)</option>
             `;
-            if (desiredState && ['Idea', 'Decidit', 'Comprat/Delivery', 'El tenim', 'Embolicat', 'Descartat'].includes(desiredState)) {
+            if (desiredState && allowed.includes(desiredState)) {
                 stateSel.value = desiredState;
             } else if (desiredState === 'Confirmat') {
                 stateSel.value = 'Decidit';
@@ -2248,11 +2433,15 @@ export const core = {
                 stateSel.value = 'Idea';
             }
         }
-        
+
         core.toggleDeliveryField();
     },
 
     onPaidByUsChange: () => {
+        core.updateStateOptions(document.getElementById('gState').value);
+    },
+
+    onTrackingChange: () => {
         core.updateStateOptions(document.getElementById('gState').value);
     },
 
@@ -2266,6 +2455,7 @@ export const core = {
         document.getElementById('giftOnlyFields').classList.toggle('hidden', !isGift);
         document.getElementById('secretWrapper').classList.toggle('hidden', !isGift);
         document.getElementById('expenseFields').classList.toggle('hidden', isGift);
+        document.getElementById('giftModalGrid')?.classList.toggle('is-expense-mode', !isGift);
 
         if (!isGift) {
             document.getElementById('gEvent').value = '✨ General Festes';
@@ -2294,17 +2484,34 @@ export const core = {
     openModalForTarget: (targetType, targetValue = null) => {
         const cfg = core.getConfig();
         core.openModal(null);
+
+        if (targetType === 'expenseCat') {
+            core.setItemType('expense', 'Idea');
+            if (targetValue) {
+                core.populateExpenseCatSelect(targetValue);
+                document.getElementById('gExpenseCat').value = targetValue;
+            }
+            return;
+        }
+
+        core.setItemType('gift', 'Idea');
         const recipChecks = document.querySelectorAll('input[name="gRecipCheck"]');
 
         if (targetType === 'person' && targetValue) {
             recipChecks.forEach(c => { if (c.value === targetValue) c.checked = true; });
         } else if (targetType === 'casa4') {
             recipChecks.forEach(c => { if (cfg.casaMembers.includes(c.value)) c.checked = true; });
+        } else if (targetType === 'altres') {
+            recipChecks.forEach(c => { if (c.value === 'Amics/Altres') c.checked = true; });
+        } else if (targetType === 'state' && targetValue) {
+            core.updateStateOptions(targetValue);
+        } else if (targetType === 'event' && targetValue) {
+            document.getElementById('gEvent').value = targetValue;
+            core.toggleRounds();
         }
 
-        const boardEvEl = document.getElementById('boardEventFilter');
-        if (boardEvEl && boardEvEl.value && boardEvEl.value !== 'all') {
-            document.getElementById('gEvent').value = boardEvEl.value;
+        if (targetType !== 'event' && core.views.gifts && core.views.gifts.selectedEvent && core.views.gifts.selectedEvent !== 'all') {
+            document.getElementById('gEvent').value = core.views.gifts.selectedEvent;
             core.toggleRounds();
         }
     },
@@ -2333,26 +2540,39 @@ export const core = {
         if (isNew) {
             core.populateExpenseCatSelect();
             document.getElementById('gPaidByUs').checked = true;
+            document.getElementById('gTracking').checked = false;
+
             if (core.activeMainView === 'santallucia') {
                 core.setItemType('expense', 'Idea');
                 document.getElementById('gExpenseCat').value = '🍲 Dinar de Santa Llúcia';
+            } else if (core.activeMainView === 'expenses') {
+                core.setItemType('expense', 'Idea');
+                const activeCat = core.views.expenses?.selectedCat;
+                if (activeCat && activeCat !== 'all') {
+                    core.populateExpenseCatSelect(activeCat);
+                    document.getElementById('gExpenseCat').value = activeCat;
+                }
             } else {
                 core.setItemType('gift', 'Idea');
-                document.getElementById('gEvent').value = '❓ Per decidir';
+                const activeEv = core.views.gifts?.selectedEvent;
+                document.getElementById('gEvent').value = (activeEv && activeEv !== 'all') ? activeEv : '❓ Per decidir';
             }
+
             document.getElementById('giftId').value = '';
             document.getElementById('gTitle').value = '';
             document.getElementById('gPrice').value = '';
             document.getElementById('gPriceType').value = 'definitive';
             document.getElementById('gDeliveryDate').value = '';
             document.getElementById('gUrl').value = '';
-            document.getElementById('gImage').value = '';
             document.getElementById('gComments').value = '';
             document.getElementById('gSecret').checked = false;
             fromChecks.forEach(c => { if (cfg.parents.includes(c.value)) c.checked = true; });
         } else {
             const g = core.data.gifts.find(x => x.id === id);
+            if (!g) return;
             const itemType = g.type || 'gift';
+
+            document.getElementById('gTracking').checked = Boolean(g.tracking);
 
             if (itemType === 'expense') {
                 const mappedCat = LEGACY_EXPENSE_CAT_MAP[g.expenseCat] || g.expenseCat || '🍲 Dinar de Santa Llúcia';
@@ -2377,25 +2597,25 @@ export const core = {
             document.getElementById('gEvent').value = g.event || (itemType === 'expense' ? '✨ General Festes' : '❓ Per decidir');
             if (g.round) document.getElementById('gRound').value = g.round;
             document.getElementById('gPriceType').value = g.isApprox ? 'approx' : 'definitive';
-            document.getElementById('gSecret').checked = g.isSecret;
+            document.getElementById('gSecret').checked = Boolean(g.isSecret);
 
-            if (g.isSecret && itemType === 'gift') {
-                document.getElementById('gTitle').value = core.decrypt(g.title, core.pin);
-                document.getElementById('gPrice').value = core.decrypt(g.price, core.pin);
-                document.getElementById('gUrl').value = core.decrypt(g.url, core.pin);
-                document.getElementById('gImage').value = core.decrypt(g.image, core.pin);
-                document.getElementById('gComments').value = core.decrypt(g.comments || '', core.pin);
-            } else {
-                document.getElementById('gTitle').value = g.title;
-                document.getElementById('gPrice').value = g.price;
-                document.getElementById('gUrl').value = g.url;
-                document.getElementById('gImage').value = g.image;
-                document.getElementById('gComments').value = g.comments || '';
-            }
+            const rawTitle = (g.isSecret && itemType === 'gift') ? core.decrypt(g.title, core.pin) : g.title;
+            const rawPrice = (g.isSecret && itemType === 'gift') ? core.decrypt(g.price, core.pin) : g.price;
+            const rawUrl = (g.isSecret && itemType === 'gift') ? core.decrypt(g.url, core.pin) : g.url;
+            const rawComments = (g.isSecret && itemType === 'gift') ? core.decrypt(g.comments || '', core.pin) : (g.comments || '');
+
+            document.getElementById('gTitle').value = rawTitle || '';
+            document.getElementById('gPrice').value = (rawPrice !== undefined && rawPrice !== null && String(rawPrice) !== '')
+                ? String(rawPrice).replace('.', ',')
+                : '';
+            document.getElementById('gUrl').value = rawUrl || '';
+            document.getElementById('gComments').value = rawComments || '';
         }
+
         core.toggleRounds();
         core.toggleDeliveryField();
         document.getElementById('giftModal').style.display = 'block';
+        document.querySelector('#giftModal .gift-modal-body')?.scrollTo(0, 0);
     },
 
     buildItemFromForm: (forceId = null, forceState = null) => {
@@ -2413,6 +2633,7 @@ export const core = {
         let paidByUs = true;
         let expenseCat = null;
         let deliveryDate = '';
+        const tracking = Boolean(document.getElementById('gTracking')?.checked);
 
         if (itemType === 'gift') {
             selectedRecips = Array.from(document.querySelectorAll('input[name="gRecipCheck"]:checked')).map(c => c.value);
@@ -2429,17 +2650,16 @@ export const core = {
         }
 
         const id = forceId || document.getElementById('giftId').value || Date.now().toString();
-        let price = document.getElementById('gPrice').value;
+        const parsedPrice = core.parseMoneyInput(document.getElementById('gPrice').value);
+        let price = (!Number.isNaN(parsedPrice) && parsedPrice > 0) ? String(Number(parsedPrice.toFixed(2))) : '';
         const isApprox = document.getElementById('gPriceType').value === 'approx';
-        let url = document.getElementById('gUrl').value;
-        let image = document.getElementById('gImage').value;
+        let url = document.getElementById('gUrl').value.trim();
         let comments = document.getElementById('gComments').value;
 
         if (isSecret && core.currentUser && itemType === 'gift') {
             title = core.crypt(title, core.pin);
             price = core.crypt(price, core.pin);
             url = core.crypt(url, core.pin);
-            image = core.crypt(image, core.pin);
             comments = core.crypt(comments, core.pin);
         }
 
@@ -2454,10 +2674,10 @@ export const core = {
             isApprox,
             deliveryDate,
             url,
-            image,
             comments,
             isSecret,
             paidByUs,
+            tracking,
             recipients: selectedRecips,
             froms: selectedFroms,
             event: chosenEvent,
@@ -2513,8 +2733,9 @@ export const core = {
         const isExpense = (g.type === 'expense');
         const isOthersSecret = (!isExpense && g.isSecret && g.createdBy !== core.currentUser);
         const titleDisplay = isOthersSecret ? "🎁 Sorpresa de " + g.createdBy : (g.isSecret ? core.decrypt(g.title, core.pin) : g.title);
-        const priceVal = isOthersSecret ? 0 : parseFloat(g.isSecret ? core.decrypt(g.price, core.pin) : g.price) || 0;
-        const imgUrl = isOthersSecret ? null : (g.isSecret ? core.decrypt(g.image, core.pin) : g.image);
+        const rawPriceStr = isOthersSecret ? '' : (g.isSecret ? core.decrypt(g.price, core.pin) : g.price);
+        const parsedPrice = core.parseMoneyInput(rawPriceStr);
+        const priceVal = Number.isNaN(parsedPrice) ? 0 : parsedPrice;
         const shopUrl = isOthersSecret ? null : (g.isSecret ? core.decrypt(g.url, core.pin) : g.url);
         const commentsDisplay = isOthersSecret ? '' : (g.isSecret ? core.decrypt(g.comments || '', core.pin) : (g.comments || ''));
 
@@ -2527,13 +2748,13 @@ export const core = {
         const isOtherHouse = !isExpense && !isPaidByUs;
         const jointContributors = !isExpense ? core.getJointContributors(froms, isPaidByUs) : [];
         const deliveryDate = !isExpense ? (g.deliveryDate || '') : '';
+        const tracking = Boolean(g.tracking);
 
         return {
             isExpense,
             isOthersSecret,
             titleDisplay,
             priceVal,
-            imgUrl,
             shopUrl,
             commentsDisplay,
             recips,
@@ -2542,7 +2763,8 @@ export const core = {
             isReceivedFromOthers,
             isOtherHouse,
             jointContributors,
-            deliveryDate
+            deliveryDate,
+            tracking
         };
     }
 };
