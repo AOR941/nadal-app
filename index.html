@@ -66,16 +66,16 @@
             </div>
         </header>
 
-        <div id="mainContainer" class="container">
+        <div id="mainContainer" class="container wide-view">
             <!-- Contenidors muntats per cada mòdul de pestanya -->
-            <div id="listViewSection"></div>
-            <div id="boardViewSection" class="hidden"></div>
+            <div id="giftsViewSection"></div>
+            <div id="expensesViewSection" class="hidden"></div>
             <div id="adventViewSection" class="hidden"></div>
             <div id="santaLluciaViewSection" class="hidden"></div>
         </div>
 
         <footer class="app-footer">
-            <div><strong>🎄 Nadal Tracker v8.0</strong> · Arquitectura Modular Client-Side &amp; Zero-Knowledge</div>
+            <div><strong>🎄 Nadal Tracker v9.0</strong> · Arquitectura Modular Client-Side &amp; Zero-Knowledge</div>
             <div>Dades privades sincronitzades via GitHub API · Xifratge local de secrets · Sense cookies ni rastrejadors</div>
         </footer>
 
@@ -83,13 +83,13 @@
 
         <!-- BARRA DE NAVEGACIÓ INFERIOR FIXA -->
         <nav class="bottom-nav" aria-label="Navegació principal">
-            <button type="button" id="navBtnList" class="bottom-nav-btn active" onclick="app.switchMainView('list')">
-                <span class="nav-icon">📋</span>
-                <span class="nav-label">Llista</span>
+            <button type="button" id="navBtnGifts" class="bottom-nav-btn active" onclick="app.switchMainView('gifts')">
+                <span class="nav-icon">🎁</span>
+                <span class="nav-label">Regals</span>
             </button>
-            <button type="button" id="navBtnBoard" class="bottom-nav-btn" onclick="app.switchMainView('board')">
-                <span class="nav-icon">👨‍👩‍👧‍👧</span>
-                <span class="nav-label">Mapa</span>
+            <button type="button" id="navBtnExpenses" class="bottom-nav-btn" onclick="app.switchMainView('expenses')">
+                <span class="nav-icon">🎄</span>
+                <span class="nav-label">Despeses</span>
             </button>
             <button type="button" id="navBtnAdvent" class="bottom-nav-btn" onclick="app.switchMainView('advent')">
                 <span class="nav-icon">🕯️</span>
@@ -263,112 +263,120 @@
         </div>
     </div>
 
-    <!-- MODAL: FORMULARI REGALS / DESPESES -->
-    <div id="giftModal" class="modal">
-        <div class="modal-content">
-            <h2 id="modalTitle" style="margin-bottom: 10px;">Nou Element 🎁</h2>
-            <div id="dupBanner" class="dup-banner hidden">📋 Còpia creada en estat "Idea". Edita el que vulguis i guarda!</div>
-            <input type="hidden" id="giftId">
-
-            <div class="tabs">
-                <button type="button" id="typeBtnGift" class="tab-btn active" onclick="app.setItemType('gift')">🎁 Regal</button>
-                <button type="button" id="typeBtnExpense" class="tab-btn" onclick="app.setItemType('expense')">🎄 Despesa Nadalenca</button>
+<!-- MODAL: FORMULARI REGALS / DESPESES -->
+    <div id="giftModal" class="modal modal-fullscreen-mobile">
+        <div class="modal-content gift-modal-card">
+            <div class="gift-modal-header">
+                <h2 id="modalTitle">Nou Element 🎁</h2>
+                <button type="button" class="modal-close-icon" onclick="app.closeModal('giftModal')" aria-label="Tancar">✕</button>
             </div>
-            <input type="hidden" id="gType" value="gift">
-            
-            <label id="lblTitle">Descripció (Què és?):</label>
-            <input type="text" id="gTitle" placeholder="Ex: Bicicleta vermella">
 
-            <div id="expenseFields" class="hidden">
-                <label>Categoria de Despesa:</label>
-                <div class="expense-cat-row">
-                    <select id="gExpenseCat"></select>
-                    <button type="button" class="add-cat-btn" onclick="app.addCustomExpenseCategory()" title="Crear nova categoria sobre la marxa">+ Nova</button>
+            <div class="gift-modal-body">
+                <div id="dupBanner" class="dup-banner hidden">📋 Còpia creada en estat "Idea". Edita el que vulguis i guarda!</div>
+                <input type="hidden" id="giftId">
+
+                <div class="tabs gift-type-tabs">
+                    <button type="button" id="typeBtnGift" class="tab-btn active" onclick="app.setItemType('gift')">🎁 Regal</button>
+                    <button type="button" id="typeBtnExpense" class="tab-btn" onclick="app.setItemType('expense')">🎄 Despesa Nadalenca</button>
                 </div>
-            </div>
+                <input type="hidden" id="gType" value="gift">
 
-            <div id="giftOnlyFields">
-                <div class="modal-form-two-col">
-                    <div>
-                        <label>Per a qui? (Pots marcar-ne diversos):</label>
-                        <div id="gRecipientsContainer" class="multi-box"></div>
+                <div id="giftModalGrid" class="gift-modal-grid">
+                    <!-- Columna esquerra: detalls del regal o despesa -->
+                    <div class="gift-col-main">
+                        <label id="lblTitle" class="cfg-label" style="margin-top:0;">Descripció (Què és?):</label>
+                        <input type="text" id="gTitle" placeholder="Ex: Bicicleta vermella">
+
+                        <div id="expenseFields" class="hidden">
+                            <label class="cfg-label">Categoria de Despesa:</label>
+                            <div class="expense-cat-row">
+                                <select id="gExpenseCat"></select>
+                                <button type="button" class="add-cat-btn" onclick="app.addCustomExpenseCategory()" title="Crear nova categoria sobre la marxa">+ Nova</button>
+                            </div>
+                        </div>
+
+                        <div class="modal-form-two-col">
+                            <div id="eventContainer">
+                                <label class="cfg-label">Esdeveniment / Moment:</label>
+                                <select id="gEvent" onchange="app.toggleRounds()"></select>
+
+                                <div id="roundContainer" class="hidden">
+                                    <label class="cfg-label" style="color:var(--c-red);">Ronda del Tió:</label>
+                                    <select id="gRound"></select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label id="lblState" class="cfg-label">Estat:</label>
+                                <select id="gState" onchange="app.toggleDeliveryField()"></select>
+                            </div>
+                        </div>
+
+                        <div id="deliveryDateContainer" class="hidden">
+                            <label class="cfg-label">🚚 Data prevista d'entrega:</label>
+                            <input type="date" id="gDeliveryDate">
+                        </div>
+
+                        <label id="lblPrice" class="cfg-label">Preu (€ — nostra part) i Tipus d'Import:</label>
+                        <div class="price-row">
+                            <input type="text" inputmode="decimal" id="gPrice" placeholder="Ex: 25,50 (Opcional)">
+                            <select id="gPriceType">
+                                <option value="definitive">✅ Preu Definitiu</option>
+                                <option value="approx">~ Preu Aproximat</option>
+                            </select>
+                        </div>
+
+                        <label class="cfg-label">URL / Enllaç botiga (Opcional):</label>
+                        <input type="url" id="gUrl" placeholder="https://...">
+
+                        <label class="cfg-label">Comentaris / Anotacions (Opcional):</label>
+                        <textarea id="gComments" rows="5" placeholder="Talla, color, opcions, seguiment d'enviament, on ho tenim amagat..."></textarea>
                     </div>
-                    <div>
-                        <label>De part de qui? (Si hi ha altres cases, es marcarà com a conjunt):</label>
-                        <div id="gFromContainer" class="multi-box"></div>
+
+                    <!-- Columna dreta: persones (xips) i opcions -->
+                    <div class="gift-col-side">
+                        <div id="giftOnlyFields">
+                            <label class="cfg-label" style="margin-top:0;">Per a qui? (Pots marcar-ne diversos):</label>
+                            <div id="gRecipientsContainer" class="chips-box"></div>
+
+                            <label class="cfg-label">De part de qui? (Si hi ha altres cases, es marcarà com a conjunt):</label>
+                            <div id="gFromContainer" class="chips-box"></div>
+
+                            <label id="paidByUsLabel" class="toggle-paid">
+                                <input type="checkbox" id="gPaidByUs" checked onchange="app.onPaidByUsChange()">
+                                <span id="paidByUsText">💰 Ho paguem nosaltres (Anotar la nostra aportació)</span>
+                            </label>
+                        </div>
+
+                        <label id="trackingLabel" class="toggle-tracking">
+                            <input type="checkbox" id="gTracking" onchange="app.onTrackingChange()">
+                            <span>🎯 <b>Tracking</b> — En faig seguiment manual</span>
+                        </label>
+
+                        <div id="secretWrapper">
+                            <div id="secretContainer" class="secret-toggle-box" style="display:none;">
+                                <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                                    <input type="checkbox" id="gSecret" style="width:20px; height:20px; margin:0;">
+                                    <span><b>Top Secret 🕵️‍♂️</b> (Ocultar a la parella)</span>
+                                </label>
+                            </div>
+                            <div id="secretWarning" style="color:var(--c-red); font-size:0.82em; margin-top:8px; display:none;">
+                                *Per crear regals secrets primer has de "Desbloquejar" la teva sessió a dalt.
+                            </div>
+                        </div>
                     </div>
                 </div>
-
-                <label id="paidByUsLabel" class="toggle-paid">
-                    <input type="checkbox" id="gPaidByUs" checked onchange="app.onPaidByUsChange()">
-                    <span id="paidByUsText">💰 Ho paguem nosaltres (Anotar la nostra aportació)</span>
-                </label>
             </div>
 
-            <div class="modal-form-two-col">
-                <div id="eventContainer">
-                    <label style="margin-top:12px; display:block;">Esdeveniment / Moment:</label>
-                    <select id="gEvent" onchange="app.toggleRounds()"></select>
-
-                    <div id="roundContainer" class="hidden">
-                        <label style="color:var(--c-red); font-weight:bold;">Ronda del Tió:</label>
-                        <select id="gRound"></select>
-                    </div>
+            <div class="gift-modal-footer">
+                <div class="gift-footer-secondary">
+                    <button type="button" class="secondary hidden" id="btnDuplicate" onclick="app.duplicateGift()">📋 Duplicar</button>
+                    <button type="button" class="danger-muted hidden" id="btnDelete" onclick="app.deleteGift()">🗑️ Eliminar</button>
                 </div>
-
-                <div>
-                    <label id="lblState" style="margin-top:12px; display:block;">Estat:</label>
-                    <select id="gState" onchange="app.toggleDeliveryField()"></select>
+                <div class="gift-footer-primary">
+                    <button type="button" class="btn-cancel-subtle" onclick="app.closeModal('giftModal')">Cancel·lar</button>
+                    <button type="button" class="btn-save-main" onclick="app.saveGift()">Guardar</button>
                 </div>
-            </div>
-
-            <div id="deliveryDateContainer" class="hidden">
-                <label style="margin-top:12px; display:block;">🚚 Data prevista d'entrega:</label>
-                <input type="date" id="gDeliveryDate">
-            </div>
-
-            <label id="lblPrice" style="margin-top:12px; display:block;">Preu (€ — nostra part) i Tipus d'Import:</label>
-            <div class="price-row">
-                <input type="number" id="gPrice" step="0.01" placeholder="Ex: 25 (Opcional)">
-                <select id="gPriceType">
-                    <option value="definitive">✅ Preu Definitiu</option>
-                    <option value="approx">~ Preu Aproximat</option>
-                </select>
-            </div>
-
-            <div class="modal-form-two-col">
-                <div>
-                    <label>URL / Enllaç botiga (Opcional):</label>
-                    <input type="url" id="gUrl" placeholder="https://...">
-                </div>
-                <div>
-                    <label>Enllaç Imatge (Opcional):</label>
-                    <input type="url" id="gImage" placeholder="https://.../foto.jpg">
-                </div>
-            </div>
-            
-            <label>Comentaris / Anotacions (Opcional):</label>
-            <textarea id="gComments" rows="2" placeholder="Talla, color, seguiment enviament, on ho tenim amagat..."></textarea>
-
-            <div id="secretWrapper">
-                <div id="secretContainer" style="background: #f4e8fb; padding: 10px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #8e44ad; display:none;">
-                    <label style="display:flex; align-items:center; gap:10px;">
-                        <input type="checkbox" id="gSecret" style="width:20px; margin:0;">
-                        <b>Top Secret 🕵️‍♂️</b> (Ocultar a la parella)
-                    </label>
-                </div>
-                <div id="secretWarning" style="color:var(--c-red); font-size:0.85em; margin-top:10px; display:none;">
-                    *Per crear regals secrets primer has de "Desbloquejar" la teva sessió a dalt.
-                </div>
-            </div>
-
-            <div style="display:flex; gap:10px; margin-top: 20px;">
-                <button onclick="app.saveGift()">Guardar</button>
-                <button class="danger" onclick="app.closeModal('giftModal')">Cancel·lar</button>
-            </div>
-            <div style="display:flex; gap:10px; margin-top: 10px;">
-                <button class="secondary hidden" id="btnDuplicate" onclick="app.duplicateGift()">📋 Duplicar</button>
-                <button class="danger hidden" id="btnDelete" onclick="app.deleteGift()" style="background:#999;">🗑️ Eliminar</button>
             </div>
         </div>
     </div>
